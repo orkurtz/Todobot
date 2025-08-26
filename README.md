@@ -162,8 +162,8 @@
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/whatsapp-todo-bot.git
-   cd whatsapp-todo-bot
+   git clone https://github.com/buzagloidan/Todobot.git
+   cd Todobot
    ```
 
 2. **Create virtual environment**
@@ -180,7 +180,7 @@
 4. **Set up environment variables**
    ```bash
    cp .env.example .env
-   # Edit .env with your configuration
+   # Edit .env with your configuration (including hidden files like .env)
    ```
 
 5. **Initialize database**
@@ -238,7 +238,7 @@ RATE_LIMIT_REQUESTS_PER_DAY=500
 ## 📁 Project Structure
 
 ```
-whatsapp-todo-bot/
+Todobot/
 ├── src/                    # Source code
 │   ├── models/            # Database models
 │   │   └── database.py    # SQLAlchemy models
@@ -263,6 +263,8 @@ whatsapp-todo-bot/
 ├── requirements.txt      # Python dependencies
 ├── setup.py             # Package setup
 ├── Procfile             # Railway/Heroku deployment
+├── .env                 # Environment variables (hidden file)
+├── .env.example         # Environment template (hidden file)
 └── README.md            # This file
 ```
 
