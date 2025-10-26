@@ -1,6 +1,5 @@
 # 🤖 WhatsApp Todo Bot
 
-
 <div align="center">
   <img src="assets/images/todo.png" alt="WhatsApp Todo Bot" width="400">
   
