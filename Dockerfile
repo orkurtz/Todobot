@@ -1,7 +1,6 @@
-# Dockerfile ממוטב עבור Todobot ב-Railway
+# Dockerfile סופי וממוטב עבור Todobot ב-Railway
 
 # שלב 1: הבנייה (Builder) - התקנה של תלויות
-# משתמשים בתמונת slim כבסיס קטן יותר להתקנה
 FROM python:3.10-slim as builder
 
 # מונע יצירת קבצי .pyc מיותרים ומוודא פלט מיידי
@@ -10,8 +9,7 @@ ENV PYTHONUNBUFFERED 1
 
 WORKDIR /app
 
-# התקנת כלי פיתוח (build-essential) הנחוצים לקומפילציה של תלויות כבדות
-# קריטי לספריות C/C++ ב-requirements.txt
+# התקנת כלי פיתוח (build-essential) הנחוצים לקומפילציה
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -21,18 +19,14 @@ COPY requirements.txt .
 # הדגל --no-cache-dir חוסך נפח ע"י מניעת קבצי מטמון pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# **** סעיף 2.1: פקודות ניקוי אגרסיביות ****
-# מטרת הניקוי היא להפחית את נפח ה-site-packages לפני העברה לשלב הריצה
-# 1. ניקוי מטמון pip שעדיין נותר
+# **** פקודות ניקוי אגרסיביות להפחתת גודל (מפחיתות את ה-7.9 GB) ****
+# ניקוי מטמון pip
 RUN rm -rf /root/.cache/pip
-
-# 2. הסרת תיקיות קומפילציה מיותרות (כמו __pycache__) מתוך התלויות
+# הסרת תיקיות קומפילציה מיותרות
 RUN find /usr/local/lib/python*/site-packages/ -name "__pycache__" -exec rm -rf {} +
-
-# 3. ניקוי תיקיות דגמים/מטמון של ספריות AI/ML כבדות (הערה: שנה לפי הצורך)
-# אם הדגם הורד לתיקיית הבית, נקה אותה:
-# RUN rm -rf /root/.cache/huggingface  # נפוץ לספריות Transformers
-# RUN rm -rf /root/.torch               # נפוץ לספריות PyTorch
+# אם יש צורך בניקוי נוסף:
+# RUN rm -rf /root/.config/huggingface 
+# RUN rm -rf /root/.torch
 
 # ---
 # שלב 2: הריצה (Runtime) - תמונה קטנה ומוכנה להפצה
@@ -40,22 +34,24 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# התקנת תלויות מערכת נחוצות לזמן הריצה בלבד (ללא כלי קומפילציה)
-# libpq-dev: קריטי לחיבורי PostgreSQL (בשימוש נפוץ ב-Railway)
-# libgomp1: נחוץ לריצת ספריות ממוטבות כמו NumPy/SciPy
+# התקנת תלויות מערכת נחוצות לזמן הריצה (כגון ל-PostgreSQL ו-NumPy)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
+# **** התיקון לשגיאת gunicorn could not be found ****
+# מוסיף את נתיב ההפעלה של ספריות Python (כמו gunicorn) לנתיבי המערכת
+ENV PATH="/usr/local/bin:$PATH"
+
 # העתק את התלויות המותקנות והמנוקות משלב ה-Builder
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 
-# העתק את כל קבצי הפרויקט שלך (קוד המקור, כולל app.py, gunicorn.conf.py וכו')
+# העתק את כל קבצי הפרויקט שלך (קוד המקור)
 COPY . .
 
 # פקודת חשיפת הפורט עבור Railway
 EXPOSE $PORT
 
-# פקודת ההפעלה הסופית של האפליקציה (בהתאם ל-Procfile שלך)
+# פקודת ההפעלה הסופית של האפליקציה
 CMD ["gunicorn", "-c", "gunicorn.conf.py", "app:app"]
