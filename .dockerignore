@@ -1,20 +1,31 @@
-# Git
+# .dockerignore
+# קבצים ותיקיות שלא יועתקו לתוך תמונת הדוקר (Docker Image)
+
+# Git & Docker Configuration
 .git
 .gitignore
+.dockerignore
 
-# Python
+# Environment Files (חיוני! כדי ש-Railway לא יבנה עם .env)
+.env
+env/
+.env/
+
+# Python Cache & Compiled Files
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
 
-# Virtual Environment
+# Virtual Environment Folders
 venv/
 .venv/
-env/
-.env
 
-# IDE / Editor
+# IDE & Editor Configuration
 .vscode/
 .idea/
+
+# Large Files & Local Data (מנפח את התמונה)
+logs/
+data/
