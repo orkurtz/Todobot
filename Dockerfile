@@ -1,7 +1,7 @@
 # Dockerfile סופי וממוטב עבור Todobot ב-Railway
 
 # שלב 1: הבנייה (Builder) - התקנה של תלויות
-FROM python:3.10-slim as builder
+FROM python:3.11-slim as builder
 
 # מונע יצירת קבצי .pyc מיותרים ומוודא פלט מיידי
 ENV PYTHONDONTWRITEBYTECODE 1
