@@ -1,41 +1,61 @@
-# שלב 1: שלב הבנייה - להורדת והתקנת כל התלויות הנדרשות
+# Dockerfile ממוטב עבור Todobot ב-Railway
+
+# שלב 1: הבנייה (Builder) - התקנה של תלויות
+# משתמשים בתמונת slim כבסיס קטן יותר להתקנה
 FROM python:3.10-slim as builder
 
-# הגדרת משתני סביבה כדי להבטיח ש-Python לא יצור קבצי קומפילציה מיותרים
+# מונע יצירת קבצי .pyc מיותרים ומוודא פלט מיידי
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# התקנת תלויות מערכת נחוצות לקומפילציה אם יש צורך (כמו gcc)
+WORKDIR /app
+
+# התקנת כלי פיתוח (build-essential) הנחוצים לקומפילציה של תלויות כבדות
+# קריטי לספריות C/C++ ב-requirements.txt
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-# העתק רק את קובץ הדרישות והתקן אותו.
-# שימוש ב--no-cache-dir מבטיח ניקוי קבצים זמניים מיד, וחוסך נפח.
+# העתקת קובץ הדרישות והתקנה
 COPY requirements.txt .
+# הדגל --no-cache-dir חוסך נפח ע"י מניעת קבצי מטמון pip
 RUN pip install --no-cache-dir -r requirements.txt
 
+# **** סעיף 2.1: פקודות ניקוי אגרסיביות ****
+# מטרת הניקוי היא להפחית את נפח ה-site-packages לפני העברה לשלב הריצה
+# 1. ניקוי מטמון pip שעדיין נותר
+RUN rm -rf /root/.cache/pip
+
+# 2. הסרת תיקיות קומפילציה מיותרות (כמו __pycache__) מתוך התלויות
+RUN find /usr/local/lib/python*/site-packages/ -name "__pycache__" -exec rm -rf {} +
+
+# 3. ניקוי תיקיות דגמים/מטמון של ספריות AI/ML כבדות (הערה: שנה לפי הצורך)
+# אם הדגם הורד לתיקיית הבית, נקה אותה:
+# RUN rm -rf /root/.cache/huggingface  # נפוץ לספריות Transformers
+# RUN rm -rf /root/.torch               # נפוץ לספריות PyTorch
+
 # ---
-# שלב 2: שלב הריצה - תמונה קטנה ונקייה לזמן ריצה בלבד
+# שלב 2: הריצה (Runtime) - תמונה קטנה ומוכנה להפצה
 FROM python:3.10-slim
 
-# ייתכן שצריך להתקין תלויות מערכת קטנות לזמן ריצה בלבד (כמו libgomp ל-numpy/scipy)
+WORKDIR /app
+
+# התקנת תלויות מערכת נחוצות לזמן הריצה בלבד (ללא כלי קומפילציה)
+# libpq-dev: קריטי לחיבורי PostgreSQL (בשימוש נפוץ ב-Railway)
+# libgomp1: נחוץ לריצת ספריות ממוטבות כמו NumPy/SciPy
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-# העתק את התלויות המותקנות משלב הבנייה (הדרך שחוסכת מקום)
+# העתק את התלויות המותקנות והמנוקות משלב ה-Builder
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 
-# העתק את כל שאר קבצי הפרויקט שלך
+# העתק את כל קבצי הפרויקט שלך (קוד המקור, כולל app.py, gunicorn.conf.py וכו')
 COPY . .
 
-# Railway צריך את הפורט פתוח
+# פקודת חשיפת הפורט עבור Railway
 EXPOSE $PORT
 
-# הפקודה שתריץ את האפליקציה (כמו ב-Procfile שלך)
+# פקודת ההפעלה הסופית של האפליקציה (בהתאם ל-Procfile שלך)
 CMD ["gunicorn", "-c", "gunicorn.conf.py", "app:app"]
