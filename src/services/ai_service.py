@@ -1,4 +1,4 @@
-"""
+""""
 AI service for handling Gemini API interactions and task parsing
 """
 import os
@@ -6,6 +6,7 @@ import google.generativeai as genai
 import json
 import time
 import random
+import re  # <-- *** ADD THIS IMPORT AT THE TOP ***
 from typing import Dict, Any, List, Optional
 
 
@@ -23,7 +24,8 @@ class AIService:
         
         # Configure Gemini
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        # You've already correctly updated this to flash!
+        self.model = genai.GenerativeModel('gemini-2.5-flash') 
         
         # Rate limiting and circuit breaker
         self.rate_limiter = APIRateLimiter(
@@ -133,6 +135,9 @@ Message to analyze: {message}"""
             self.circuit_breaker.record_failure(e)
             return "Sorry, I'm having trouble processing your request right now. Please try again in a moment."
     
+    # ======================================================================
+    # === THIS IS THE UPDATED FUNCTION WITH THE SIMPLE, EFFECTIVE FIX ===
+    # ======================================================================
     def parse_tasks(self, message_text: str) -> List[Dict[str, Any]]:
         """Parse tasks from user message using AI"""
         from datetime import datetime
@@ -159,9 +164,31 @@ Message to analyze: {message}"""
             # Make API call
             response_text = self._make_api_call_with_retry(prompt)
             
+            # ------------------------------------------------------------------
+            # === SIMPLE & EFFECTIVE FIX START ===
+            # This robustly finds and extracts the JSON from the raw response.
+            # ------------------------------------------------------------------
+            
+            # Use regex to find the JSON block, ignoring the ```json ... ```
+            # re.DOTALL makes '.' match newlines, which is crucial here.
+            match = re.search(r"\{.*\}", response_text, re.DOTALL)
+            
+            if not match:
+                print(f"Failed to find any JSON in the AI response.")
+                print(f"Raw response: {response_text}")
+                return []
+
+            # Extract the matched JSON string
+            cleaned_response = match.group(0)
+            
+            # ------------------------------------------------------------------
+            # === SIMPLE & EFFECTIVE FIX END ===
+            # ------------------------------------------------------------------
+
             # Parse JSON response
             try:
-                parsed_data = json.loads(response_text)
+                # Parse the *cleaned* text
+                parsed_data = json.loads(cleaned_response) 
                 tasks = parsed_data.get('tasks', [])
                 
                 # Validate and clean tasks
@@ -178,7 +205,8 @@ Message to analyze: {message}"""
                 
             except json.JSONDecodeError as e:
                 print(f"Failed to parse AI response as JSON: {e}")
-                print(f"Raw response: {response_text}")
+                print(f"Raw response: {response_text}") # Log the original for debugging
+                print(f"Cleaned response attempt: {cleaned_response}")
                 return []
             
         except Exception as e:
@@ -195,7 +223,10 @@ Message to analyze: {message}"""
                 if response.candidates and response.candidates[0].content:
                     return response.candidates[0].content.parts[0].text
                 else:
-                    raise Exception("Empty response from Gemini API")
+                    # This might be where the empty response comes from
+                    # (e.g., safety filters)
+                    print("Warning: Gemini response was empty (possibly safety filters).")
+                    return "" # Return empty string instead of raising exception
                 
             except Exception as e:
                 if attempt < max_retries - 1:
