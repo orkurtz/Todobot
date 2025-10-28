@@ -57,10 +57,10 @@ class TaskService:
             task = Task.query.filter_by(id=task_id, user_id=user_id).first()
             
             if not task:
-                return False, "Task not found or doesn't belong to you"
+                return False, "❌ המשימה לא נמצאה או שאינה שייכת לך"
             
             if task.status == 'completed':
-                return False, "Task is already completed"
+                return False, "❌ המשימה כבר הושלמה"
             
             task.status = 'completed'
             task.completed_at = datetime.utcnow()
@@ -82,7 +82,7 @@ class TaskService:
             task = Task.query.filter_by(id=task_id, user_id=user_id).first()
             
             if not task:
-                return False, "Task not found or doesn't belong to you"
+                return False, "❌ המשימה לא נמצאה או שאינה שייכת לך"
             
             task_desc = task.description[:50]
             db.session.delete(task)
@@ -298,7 +298,7 @@ class TaskService:
     def format_task_list(self, tasks: List[Task], show_due_date: bool = True) -> str:
         """Format task list for display"""
         if not tasks:
-            return "📋 No tasks found."
+            return "📋 לא נמצאו משימות."
         
         formatted_tasks = []
         for i, task in enumerate(tasks, 1):
@@ -307,16 +307,16 @@ class TaskService:
             if show_due_date and task.due_date:
                 # Convert UTC to Israel timezone for display
                 local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
-                formatted_date = local_time.strftime("%m/%d %H:%M")
+                formatted_date = local_time.strftime("%d/%m %H:%M")
                 
                 # Add urgency indicators
                 now = datetime.utcnow()
                 if task.due_date < now:
-                    task_text += f" ⚠️ (Overdue - {formatted_date})"
+                    task_text += f" ⚠️ (באיחור - {formatted_date})"
                 elif task.due_date < now + timedelta(hours=24):
-                    task_text += f" 🔥 (Due {formatted_date})"
+                    task_text += f" 🔥 (יעד היום {formatted_date})"
                 else:
-                    task_text += f" 📅 (Due {formatted_date})"
+                    task_text += f" 📅 (יעד {formatted_date})"
             
             formatted_tasks.append(task_text)
         
@@ -359,20 +359,20 @@ class TaskService:
                 
                 elif action == 'add':
                     # Create new task
-                due_date = None
-                due_date_str = task_data.get('due_date')
-                if due_date_str:
-                    try:
-                        due_date = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M")
-                    except ValueError:
+                    due_date = None
+                    due_date_str = task_data.get('due_date')
+                    if due_date_str:
                         try:
-                            due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
-                            due_date = due_date.replace(hour=9, minute=0)  # Default to 9 AM
+                            due_date = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M")
                         except ValueError:
-                            pass
-                
-                task = self.create_task(user_id, description, due_date)
-                created_tasks.append(task)
+                            try:
+                                due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
+                                due_date = due_date.replace(hour=9, minute=0)  # Default to 9 AM
+                            except ValueError:
+                                pass
+                    
+                    task = self.create_task(user_id, description, due_date)
+                    created_tasks.append(task)
                 
                 elif action == 'update':
                     # Handle task update
@@ -410,22 +410,26 @@ class TaskService:
                 summary = f"✅ {task.description}"
                 if task.due_date:
                     local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
-                    summary += f" (Due: {local_time.strftime('%m/%d %H:%M')})"
+                    summary += f" (יעד: {local_time.strftime('%d/%m %H:%M')})"
                 task_summaries.append(summary)
             
-            response_parts.append(f"Created {len(created_tasks)} task{'s' if len(created_tasks) != 1 else ''}:\n" + "\n".join(task_summaries))
+            task_word = "משימה" if len(created_tasks) == 1 else "משימות"
+            response_parts.append(f"נוצרו {len(created_tasks)} {task_word}:\n" + "\n".join(task_summaries))
         
         if completed_tasks:
-            response_parts.append(f"✅ Completed {len(completed_tasks)} task{'s' if len(completed_tasks) != 1 else ''}:\n" + "\n".join(completed_tasks))
+            task_word = "משימה" if len(completed_tasks) == 1 else "משימות"
+            response_parts.append(f"✅ הושלמו {len(completed_tasks)} {task_word}:\n" + "\n".join(completed_tasks))
         
         if deleted_tasks:
-            response_parts.append(f"🗑️ Deleted {len(deleted_tasks)} task{'s' if len(deleted_tasks) != 1 else ''}:\n" + "\n".join(deleted_tasks))
+            task_word = "משימה" if len(deleted_tasks) == 1 else "משימות"
+            response_parts.append(f"🗑️ נמחקו {len(deleted_tasks)} {task_word}:\n" + "\n".join(deleted_tasks))
         
         if query_results:
             response_parts.append("\n".join(query_results))
         
         if failed_tasks:
-            response_parts.append(f"⚠️ Failed to process {len(failed_tasks)} task{'s' if len(failed_tasks) != 1 else ''}:\n" + "\n".join(failed_tasks))
+            task_word = "משימה" if len(failed_tasks) == 1 else "משימות"
+            response_parts.append(f"⚠️ נכשל בעיבוד {len(failed_tasks)} {task_word}:\n" + "\n".join(failed_tasks))
         
         return "\n\n".join(response_parts) if response_parts else ""
     
@@ -457,7 +461,7 @@ class TaskService:
             task = Task.query.filter_by(id=task_id, user_id=user_id, status='pending').first()
             
             if not task:
-                return False, f"Task #{task_id} not found or already completed"
+                return False, f"❌ משימה #{task_id} לא נמצאה או כבר הושלמה"
             
             success, message = self.complete_task(task.id, user_id)
             if success:
@@ -475,10 +479,10 @@ class TaskService:
             tasks = self.get_user_tasks(user_id, status='pending', limit=100)
             
             if not tasks:
-                return False, "No pending tasks found"
+                return False, "❌ לא נמצאו משימות פתוחות"
             
             if task_number < 1 or task_number > len(tasks):
-                return False, f"Task number {task_number} not found. You have {len(tasks)} pending tasks."
+                return False, f"❌ משימה מספר {task_number} לא נמצאה. יש לך {len(tasks)} משימות פתוחות."
             
             # Select the task by number (1-indexed)
             task_to_complete = tasks[task_number - 1]
@@ -486,7 +490,7 @@ class TaskService:
             # Mark as completed
             success, message = self.complete_task(task_to_complete.id, user_id)
             if success:
-                return True, f"Task {task_number}: {task_to_complete.description[:50]}..."
+                return True, f"משימה {task_number}: {task_to_complete.description[:50]}..."
             else:
                 return False, message
                 
@@ -505,7 +509,7 @@ class TaskService:
             ).all()
             
             if not tasks:
-                return False, f"No pending task found matching '{description}'"
+                return False, f"❌ לא נמצאה משימה פתוחה התואמת '{description}'"
             
             if len(tasks) == 1:
                 # Single task found
@@ -516,7 +520,7 @@ class TaskService:
                     return False, message
             else:
                 # Multiple tasks found
-                return False, f"Multiple tasks found matching '{description}'. Please be more specific or use task number."
+                return False, f"❌ נמצאו מספר משימות התואמות '{description}'. אנא היה יותר ספציפי או השתמש במספר המשימה."
                 
         except Exception as e:
             print(f"❌ Error completing task by description: {e}")
@@ -550,7 +554,7 @@ class TaskService:
             task = Task.query.filter_by(id=task_id, user_id=user_id, status='pending').first()
             
             if not task:
-                return False, f"Task #{task_id} not found"
+                return False, f"❌ משימה #{task_id} לא נמצאה"
             
             success, message = self.delete_task(task.id, user_id)
             if success:
@@ -568,10 +572,10 @@ class TaskService:
             tasks = self.get_user_tasks(user_id, status='pending', limit=100)
             
             if not tasks:
-                return False, "No pending tasks found"
+                return False, "❌ לא נמצאו משימות פתוחות"
             
             if task_number < 1 or task_number > len(tasks):
-                return False, f"Task number {task_number} not found. You have {len(tasks)} pending tasks."
+                return False, f"❌ משימה מספר {task_number} לא נמצאה. יש לך {len(tasks)} משימות פתוחות."
             
             # Select the task by number (1-indexed)
             task_to_delete = tasks[task_number - 1]
@@ -579,7 +583,7 @@ class TaskService:
             # Delete the task
             success, message = self.delete_task(task_to_delete.id, user_id)
             if success:
-                return True, f"Task {task_number}: {task_to_delete.description[:50]}..."
+                return True, f"משימה {task_number}: {task_to_delete.description[:50]}..."
             else:
                 return False, message
                 
@@ -598,7 +602,7 @@ class TaskService:
             ).all()
             
             if not tasks:
-                return False, f"No pending task found matching '{description}'"
+                return False, f"❌ לא נמצאה משימה פתוחה התואמת '{description}'"
             
             if len(tasks) == 1:
                 # Single task found
@@ -609,7 +613,7 @@ class TaskService:
                     return False, message
             else:
                 # Multiple tasks found
-                return False, f"Multiple tasks found matching '{description}'. Please be more specific or use task number."
+                return False, f"❌ נמצאו מספר משימות התואמות '{description}'. אנא היה יותר ספציפי או השתמש במספר המשימה."
                 
         except Exception as e:
             print(f"❌ Error deleting task by description: {e}")
