@@ -198,13 +198,23 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         
         # Execute parsed tasks
         task_summary = ""
+        has_action = False
+        
         if parsed_tasks:
             task_summary = task_service.execute_parsed_tasks(user.id, parsed_tasks, sanitized_text)
+            # Check if there's an action (not query)
+            has_action = any(task.get('action') in ['complete', 'delete', 'add'] for task in parsed_tasks)
         
-        # Combine AI response with task summary
-        full_response = ai_response
-        if task_summary:
-            full_response += f"\n\n{task_summary}"
+        # Build response intelligently
+        if has_action and task_summary:
+            # For actions (complete/delete/add) - only show execution result
+            full_response = task_summary
+        elif task_summary:
+            # For queries - combine AI response with data
+            full_response = f"{ai_response}\n\n{task_summary}"
+        else:
+            # No task operations - just AI response
+            full_response = ai_response
         
         # Send response
         whatsapp_service.send_message(from_number, full_response)
