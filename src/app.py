@@ -52,7 +52,7 @@ def create_app(config_name=None):
         # Initialize monitoring service
         monitoring_service = MonitoringService(
             whatsapp_service=whatsapp_service,
-            alert_phone_numbers=app.config.get('ADMIN_PHONE_NUMBERS', ["972546617043"])
+            alert_phone_numbers=app.config.get('ADMIN_PHONE_NUMBERS', ["+972546617043"])
         )
         
         # Initialize scheduler service (only in worker processes)
