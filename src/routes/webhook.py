@@ -203,7 +203,7 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         if parsed_tasks:
             task_summary = task_service.execute_parsed_tasks(user.id, parsed_tasks, sanitized_text)
             # Check if there's an action (not query)
-            has_action = any(task.get('action') in ['complete', 'delete', 'add'] for task in parsed_tasks)
+            has_action = any(task.get('action') in ['complete', 'delete', 'add', 'update', 'reschedule'] for task in parsed_tasks)
         
         # Build response intelligently
         if has_action and task_summary:
