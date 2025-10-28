@@ -56,7 +56,7 @@ class MonitoringService:
             return False
         
         try:
-            alert_message = f"🚨 SYSTEM ALERT\n\n{message}\n\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            alert_message = f"🚨 התראת מערכת\n\n{message}\n\nזמן: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
             
             success_count = 0
             for phone_number in self.alert_phone_numbers:
