@@ -128,32 +128,42 @@ class SchedulerService:
         except Exception as e:
             print(f"Error in check_and_send_due_reminders: {e}")
     
-    def _send_task_reminder(self, task, app):
-        """Send reminder message for a task"""
+def _send_task_reminder(self, task, app):
+        """Send reminder message for a task - CORRECTED VERSION"""
         # Use Redis lock to prevent duplicate execution
         lock_key = f"reminder_lock:{task.id}"
-        
+        lock_acquired = False # Flag to track lock status
+
         try:
             if self.redis_client:
+                # Try to acquire the lock for 30 seconds
                 lock_acquired = self.redis_client.set(lock_key, "locked", nx=True, ex=30)
                 if not lock_acquired:
                     print(f"Another process is handling reminder for task {task.id} - skipping")
                     return
-            
+
             with app.app_context():
-                # Get user information
-                user = User.query.get(task.user_id)
-                if not user:
-                    print(f"User not found for task {task.id}")
+                # --- החלק החשוב: שלוף את המשימה מחדש כדי לוודא שהיא מחוברת ל-Session ---
+                # חשוב כדי שהעדכון יישמר
+                current_task = Task.query.get(task.id)
+                if not current_task or current_task.reminder_sent: 
+                    # אם המשימה נמחקה או שכבר סומנה, אל תעשה כלום
+                    print(f"Task {task.id} not found or already reminded - skipping.")
                     return
-                
+
+                # Get user information
+                user = User.query.get(current_task.user_id)
+                if not user:
+                    print(f"User not found for task {current_task.id}")
+                    return
+
                 # Create reminder message
                 current_time = datetime.utcnow().replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
                 
-                reminder_text = f"🔔 תזכורת!\n\n📋 {task.description}\n\n"
+                reminder_text = f"🔔 תזכורת!\n\n📋 {current_task.description}\n\n"
                 
-                if task.due_date:
-                    due_local = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                if current_task.due_date:
+                    due_local = current_task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
                     if due_local.date() == current_time.date():
                         reminder_text += f"⏰ משימה להיום בשעה {due_local.strftime('%H:%M')}\n\n"
                     else:
@@ -165,42 +175,64 @@ class SchedulerService:
                 result = self.whatsapp_service.send_message(user.phone_number, reminder_text)
                 
                 if result.get("success"):
-                    print(f"Sent reminder for task '{task.description[:50]}...' to user {user.phone_number}")
+                    print(f"Sent reminder for task '{current_task.description[:50]}...' to user {user.phone_number}")
                     
-                    # Save the reminder message for reaction handling
                     whatsapp_msg_id = result.get("response", {}).get("messages", [{}])[0].get("id")
-                    if whatsapp_msg_id:
-                        parsed_tasks = json.dumps({
-                            "tasks": [{"task_id": task.id, "description": task.description}]
-                        })
-                        
-                        message = Message(
-                            user_id=user.id,
-                            message_type='reminder',
-                            whatsapp_message_id=whatsapp_msg_id,
-                            parsed_tasks=parsed_tasks
-                        )
-                        message.content = reminder_text
-                        message.ai_response = reminder_text
-                        
-                        db.session.add(message)
+                    
+                    # --- התחל טרנזקציה אחת ---
+                    try:
+                        message_to_save = None
+                        if whatsapp_msg_id:
+                            parsed_tasks = json.dumps({
+                                "tasks": [{"task_id": current_task.id, "description": current_task.description}]
+                            })
+                            
+                            message_to_save = Message(
+                                user_id=user.id,
+                                message_type='reminder',
+                                whatsapp_message_id=whatsapp_msg_id,
+                                parsed_tasks=parsed_tasks,
+                                content=reminder_text, # Set content directly
+                                ai_response=reminder_text # Set ai_response directly
+                            )
+                            db.session.add(message_to_save)
+                            print(f"Prepared reminder message with ID {whatsapp_msg_id} for saving")
+
+                        # Mark as reminder sent (using the attached current_task)
+                        current_task.reminder_sent = True
+                        db.session.add(current_task) # Explicitly add to session just in case
+                        print(f"Marked task {current_task.id} as reminder sent")
+
+                        # **** Commit פעם אחת בלבד בסוף ****
                         db.session.commit()
-                        
-                        print(f"Saved reminder message with ID {whatsapp_msg_id} for reaction handling")
-                    
-                    # Mark as reminder sent
-                    task.reminder_sent = True
-                    db.session.commit()
-                    print(f"Marked task {task.id} as reminder sent")
-                    
+                        print(f"✅ Successfully committed changes for task {current_task.id}")
+
+                        if message_to_save:
+                            print(f"Saved reminder message ID {whatsapp_msg_id}")
+
+
+                    except Exception as db_error:
+                        db.session.rollback() # חשוב לבטל שינויים אם ה-Commit נכשל
+                        print(f"❌ Database error during commit for task {current_task.id}: {db_error}")
+                        # Re-raise or handle appropriately - maybe don't release lock yet?
+
                 else:
-                    print(f"Failed to send reminder for task {task.id}: {result.get('error')}")
-                
+                    print(f"Failed to send reminder for task {current_task.id}: {result.get('error')}")
+                    # Consider if you should still mark reminder_sent = True or retry later
+
         except Exception as e:
-            print(f"Error sending reminder for task {task.id}: {e}")
+            # הוספת Rollback גם לשגיאות כלליות
+            try:
+                # Ensure rollback only happens if a transaction is active
+                if db.session.is_active:
+                     db.session.rollback()
+            except Exception as rb_error:
+                 print(f"Error during rollback: {rb_error}")
+            print(f"❌ Error sending reminder for task {task.id}: {e}")
+
         finally:
-            # Release Redis lock
-            if self.redis_client:
+            # Release Redis lock only if it was acquired
+            if self.redis_client and lock_acquired:
                 try:
                     self.redis_client.delete(lock_key)
                 except Exception:
