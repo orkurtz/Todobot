@@ -75,29 +75,54 @@ Response Style:
 
 Remember: You're helping busy people stay organized while maintaining natural conversation.""",
             
-            'task_parsing': """Analyze the user's message to identify task-related actions: adding new tasks, completing existing tasks, or deleting existing tasks.
+            'task_parsing': """Analyze the user's message to identify task-related actions: adding new tasks, completing existing tasks, deleting existing tasks, or updating/rescheduling existing tasks.
 
 Instructions:
-1. Determine the user's primary intent: 'add', 'complete', 'delete', or 'query' (if asking about tasks). Default to 'add' if unsure but looks like a task. If it's just conversation, return an empty task list.
-2. For 'add': Extract the task description and due date/time if mentioned (convert relative dates like "tomorrow", "next week" based on current date).
-3. For 'complete' or 'delete': Extract keywords or task numbers mentioned by the user that identify the target task (e.g., "the meeting", "task 1", "call Dan"). Put this identifier in the 'description' field.
-4. Do not create tasks for casual conversation, questions without action, past completed actions, or vague statements.
+1. Determine the user's primary intent: 'add', 'complete', 'delete', 'update', 'reschedule', or 'query'
+2. For 'add': Extract the task description and due date/time
+3. For 'complete' or 'delete': Extract task identifier (number or keywords)
+4. For 'update': Extract task identifier AND new description (and optionally new date)
+5. For 'reschedule': Extract task identifier AND new due date/time
+6. Support natural language dates in Hebrew and English
+7. Do not create tasks for casual conversation, questions without action, past completed actions, or vague statements.
+
+Actions:
+- 'add': Create new task
+- 'complete': Mark task as done
+- 'delete': Remove task
+- 'update': Change task description (and optionally due date)
+- 'reschedule': Change only the due date/time
+- 'query': Ask about tasks
 
 Current date for reference: {current_date}
 User timezone: Asia/Jerusalem
 
-Respond with JSON only, containing a list of identified tasks/actions:
+Respond with JSON only:
 {{"tasks": [
     {{
-        "action": "add" | "complete" | "delete" | "query", 
-        "description": "task description OR identifier for complete/delete", 
-        "due_date": "YYYY-MM-DD HH:MM" or null,
-        "status": "pending" | "completed" (only relevant for 'complete' action)
+        "action": "add" | "complete" | "delete" | "update" | "reschedule" | "query",
+        "description": "task description OR identifier OR new description",
+        "due_date": "natural language date" or "YYYY-MM-DD HH:MM" or null,
+        "task_id": task number as string or null,
+        "new_description": "new description for update action" or null
     }}
 ]}}
 
-Example for 'complete': If user says "Done with task 2", return: {{"tasks": [{{"action": "complete", "description": "2"}}]}}
-Example for 'add': If user says "Remind me to buy milk tomorrow morning", return: {{"tasks": [{{"action": "add", "description": "buy milk", "due_date": "YYYY-MM-DD 09:00"}}]}}
+Examples:
+Hebrew:
+- "העבר משימה 2 למחר" → {{"tasks": [{{"action": "reschedule", "task_id": "2", "due_date": "מחר"}}]}}
+- "שנה משימה 3 להתקשר לרופא" → {{"tasks": [{{"action": "update", "task_id": "3", "new_description": "התקשר לרופא"}}]}}
+- "דחה משימה 1 ביומיים" → {{"tasks": [{{"action": "reschedule", "task_id": "1", "due_date": "מחרתיים"}}]}}
+- "עדכן משימה 5 קנה חלב מחר ב-10" → {{"tasks": [{{"action": "update", "task_id": "5", "new_description": "קנה חלב", "due_date": "מחר ב-10:00"}}]}}
+
+English:
+- "Move task 2 to tomorrow" → {{"tasks": [{{"action": "reschedule", "task_id": "2", "due_date": "tomorrow"}}]}}
+- "Change task 3 to call dentist" → {{"tasks": [{{"action": "update", "task_id": "3", "new_description": "call dentist"}}]}}
+- "Postpone task 1 by 2 days" → {{"tasks": [{{"action": "reschedule", "task_id": "1", "due_date": "in 2 days"}}]}}
+
+Previous examples still valid:
+- "Done with task 2" → {{"tasks": [{{"action": "complete", "description": "2"}}]}}
+- "Remind me to buy milk tomorrow morning" → {{"tasks": [{{"action": "add", "description": "buy milk", "due_date": "tomorrow morning"}}]}}
 
 Message to analyze: {message}"""
         }
