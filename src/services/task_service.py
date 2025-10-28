@@ -250,6 +250,51 @@ class TaskService:
             db.session.rollback()
             return False
     
+    def update_task(self, task_id: int, user_id: int, new_description: str = None, new_due_date: datetime = None) -> Tuple[bool, str]:
+        """Update an existing task with friendly Hebrew messages"""
+        try:
+            task = Task.query.filter_by(id=task_id, user_id=user_id).first()
+            
+            if not task:
+                return False, "❌ לא מצאתי את המשימה הזו. אולי כבר נמחקה?"
+            
+            if task.status == 'completed':
+                return False, "❌ לא ניתן לעדכן משימה שכבר הושלמה. תמחק אותה ותיצור משימה חדשה במקום."
+            
+            # Store old values for confirmation message
+            old_description = task.description
+            old_due_date = task.due_date
+            
+            # Update fields if provided
+            if new_description:
+                task.description = new_description.strip()[:500]
+            
+            if new_due_date is not None:  # Allow None to clear due date
+                task.due_date = new_due_date
+                task.reminder_sent = False  # Reset reminder if date changed
+            
+            task.updated_at = datetime.utcnow()
+            db.session.commit()
+            
+            # Build confirmation message in Hebrew
+            changes = []
+            if new_description and new_description != old_description:
+                changes.append(f"תיאור: '{old_description[:30]}...' → '{task.description[:30]}...'")
+            if new_due_date != old_due_date:
+                if new_due_date:
+                    local_time = new_due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                    changes.append(f"תאריך יעד → {local_time.strftime('%d/%m/%Y בשעה %H:%M')}")
+                else:
+                    changes.append("תאריך יעד הוסר")
+            
+            print(f"✅ Updated task {task_id} for user {user_id}: {', '.join(changes)}")
+            return True, f"✅ משימה #{task_id} עודכנה:\n{chr(10).join('• ' + c for c in changes)}"
+            
+        except Exception as e:
+            print(f"❌ Failed to update task: {e}")
+            db.session.rollback()
+            return False, f"❌ שגיאה בעדכון המשימה. נסה שוב."
+    
     def format_task_list(self, tasks: List[Task], show_due_date: bool = True) -> str:
         """Format task list for display"""
         if not tasks:
@@ -314,20 +359,36 @@ class TaskService:
                 
                 elif action == 'add':
                     # Create new task
-                    due_date = None
-                    due_date_str = task_data.get('due_date')
-                    if due_date_str:
+                due_date = None
+                due_date_str = task_data.get('due_date')
+                if due_date_str:
+                    try:
+                        due_date = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M")
+                    except ValueError:
                         try:
-                            due_date = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M")
+                            due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
+                            due_date = due_date.replace(hour=9, minute=0)  # Default to 9 AM
                         except ValueError:
-                            try:
-                                due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
-                                due_date = due_date.replace(hour=9, minute=0)  # Default to 9 AM
-                            except ValueError:
-                                pass
-                    
-                    task = self.create_task(user_id, description, due_date)
-                    created_tasks.append(task)
+                            pass
+                
+                task = self.create_task(user_id, description, due_date)
+                created_tasks.append(task)
+                
+                elif action == 'update':
+                    # Handle task update
+                    success, message = self._handle_task_update(user_id, task_data)
+                    if success:
+                        completed_tasks.append(message)  # Use completed_tasks list for updates
+                    else:
+                        failed_tasks.append(message)
+                
+                elif action == 'reschedule':
+                    # Handle task reschedule
+                    success, message = self._handle_task_reschedule(user_id, task_data)
+                    if success:
+                        completed_tasks.append(message)
+                    else:
+                        failed_tasks.append(message)
                 
                 elif action == 'query':
                     # Query action - actually query the database!
@@ -553,6 +614,107 @@ class TaskService:
         except Exception as e:
             print(f"❌ Error deleting task by description: {e}")
             return False, str(e)
+    
+    def _handle_task_update(self, user_id: int, task_data: Dict) -> Tuple[bool, str]:
+        """Handle task update action with natural language date parsing"""
+        try:
+            task_id_str = task_data.get('task_id') or task_data.get('description')
+            new_description = task_data.get('new_description')
+            new_due_date_str = task_data.get('due_date')
+            
+            if not task_id_str:
+                return False, "❌ אנא ציין איזו משימה לעדכן (למשל: 'עדכן משימה 2')"
+            
+            # Parse task ID
+            if task_id_str.isdigit():
+                task_id = int(task_id_str)
+                
+                # Try as database ID first
+                task = Task.query.filter_by(id=task_id, user_id=user_id, status='pending').first()
+                
+                if not task:
+                    # Try as position number
+                    tasks = self.get_user_tasks(user_id, status='pending', limit=100)
+                    if task_id < 1 or task_id > len(tasks):
+                        return False, f"❌ משימה #{task_id} לא נמצאה. יש לך {len(tasks)} משימות פתוחות."
+                    task = tasks[task_id - 1]
+                    task_id = task.id
+            else:
+                return False, "❌ אנא ציין מספר משימה (למשל: 2, 3, 42)"
+            
+            # Parse new due date if provided - USE NATURAL LANGUAGE PARSER!
+            new_due_date = None
+            if new_due_date_str:
+                # Try natural language parsing first
+                new_due_date = self.parse_date_from_text(new_due_date_str)
+                
+                # If that fails, try standard formats
+                if not new_due_date:
+                    try:
+                        new_due_date = datetime.strptime(new_due_date_str, "%Y-%m-%d %H:%M")
+                    except ValueError:
+                        try:
+                            new_due_date = datetime.strptime(new_due_date_str, "%Y-%m-%d")
+                            new_due_date = new_due_date.replace(hour=9, minute=0)
+                        except ValueError:
+                            return False, f"❌ לא הצלחתי להבין את התאריך '{new_due_date_str}'. נסה 'מחר', 'יום שלישי', או תאריך מדויק."
+            
+            # Update the task
+            success, message = self.update_task(task_id, user_id, new_description, new_due_date)
+            return success, message
+            
+        except Exception as e:
+            print(f"❌ Error handling task update: {e}")
+            return False, "❌ שגיאה בעדכון המשימה. נסה שוב."
+    
+    def _handle_task_reschedule(self, user_id: int, task_data: Dict) -> Tuple[bool, str]:
+        """Handle task reschedule action (change only due date) with natural language"""
+        try:
+            task_id_str = task_data.get('task_id') or task_data.get('description')
+            new_due_date_str = task_data.get('due_date')
+            
+            if not task_id_str:
+                return False, "❌ אנא ציין איזו משימה לדחות (למשל: 'דחה משימה 2')"
+            
+            if not new_due_date_str:
+                return False, "❌ אנא ציין מתי לדחות (למשל: 'למחר', 'ליום שלישי', 'בעוד שבוע')"
+            
+            # Parse task ID (same logic as update)
+            if task_id_str.isdigit():
+                task_id = int(task_id_str)
+                
+                task = Task.query.filter_by(id=task_id, user_id=user_id, status='pending').first()
+                
+                if not task:
+                    tasks = self.get_user_tasks(user_id, status='pending', limit=100)
+                    if task_id < 1 or task_id > len(tasks):
+                        return False, f"❌ משימה #{task_id} לא נמצאה"
+                    task = tasks[task_id - 1]
+                    task_id = task.id
+            else:
+                return False, "❌ אנא ציין מספר משימה"
+            
+            # Parse new due date - USE NATURAL LANGUAGE PARSER!
+            new_due_date = self.parse_date_from_text(new_due_date_str)
+            
+            # If natural language fails, try standard formats
+            if not new_due_date:
+                try:
+                    new_due_date = datetime.strptime(new_due_date_str, "%Y-%m-%d %H:%M")
+                except ValueError:
+                    try:
+                        new_due_date = datetime.strptime(new_due_date_str, "%Y-%m-%d")
+                        new_due_date = new_due_date.replace(hour=9, minute=0)
+                    except ValueError:
+                        return False, f"❌ לא הצלחתי להבין מתי לדחות. נסה 'מחר', 'יום רביעי ב-15:00', או תאריך מדויק."
+            
+            # Update only the due date
+            success, message = self.update_task(task_id, user_id, None, new_due_date)
+            return success, message
+            
+        except Exception as e:
+            print(f"❌ Error handling task reschedule: {e}")
+            return False, "❌ שגיאה בדחיית המשימה. נסה שוב."
     
     def _handle_query_action(self, user_id: int, description: str, task_data: Dict) -> Optional[str]:
         """Handle query action by actually querying the database"""
