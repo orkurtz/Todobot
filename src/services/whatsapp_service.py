@@ -15,7 +15,7 @@ class WhatsAppService:
     """Handle WhatsApp API interactions"""
     
     def __init__(self, redis_client=None):
-        self.api_url = "https://graph.facebook.com/v20.0/456933577513253/messages"
+        self.api_url = "https://graph.facebook.com/v22.0/900153549837183/messages"
         self.token = os.getenv('WHATSAPP_TOKEN')
         if not self.token:
             raise ValueError("WHATSAPP_TOKEN environment variable is required")
