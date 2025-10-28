@@ -41,7 +41,7 @@ class WhatsAppService:
         )
     
     def send_message(self, to: str, text: str) -> Dict[str, Any]:
-        """Send a text message via WhatsApp API"""
+        """Send a text message via WhatsApp API with RTL support"""
         # Check rate limiting
         allowed, error_msg = self.rate_limiter.is_allowed()
         if not allowed:
@@ -52,10 +52,13 @@ class WhatsAppService:
         if not available:
             return {"success": False, "error": f"Service unavailable: {status_msg}"}
         
+        # Add RTL marker for Hebrew text
+        rtl_text = f"\u200F{text}"  # Add Right-to-Left Mark at start
+        
         payload = {
             "messaging_product": "whatsapp",
             "to": to,
-            "text": {"body": text}
+            "text": {"body": rtl_text}
         }
         
         try:
