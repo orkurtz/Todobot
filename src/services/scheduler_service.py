@@ -128,7 +128,7 @@ class SchedulerService:
         except Exception as e:
             print(f"Error in check_and_send_due_reminders: {e}")
     
-def _send_task_reminder(self, task, app):
+    def _send_task_reminder(self, task, app):
         """Send reminder message for a task - CORRECTED VERSION"""
         # Use Redis lock to prevent duplicate execution
         lock_key = f"reminder_lock:{task.id}"
