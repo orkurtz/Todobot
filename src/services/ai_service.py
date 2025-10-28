@@ -75,22 +75,29 @@ Response Style:
 
 Remember: You're helping busy people stay organized while maintaining natural conversation.""",
             
-            'task_parsing': """Extract actionable tasks from the user's message. 
+            'task_parsing': """Analyze the user's message to identify task-related actions: adding new tasks, completing existing tasks, or deleting existing tasks.
 
 Instructions:
-1. Identify concrete, actionable tasks, reminders, or commitments
-2. Extract due dates/times if mentioned (convert relative dates like "tomorrow", "next week" to actual dates)
-3. Don't create tasks for:
-   - Casual conversation
-   - Questions without action required
-   - Completed actions mentioned in past tense
-   - Vague statements without clear action
+1. Determine the user's primary intent: 'add', 'complete', 'delete', or 'query' (if asking about tasks). Default to 'add' if unsure but looks like a task. If it's just conversation, return an empty task list.
+2. For 'add': Extract the task description and due date/time if mentioned (convert relative dates like "tomorrow", "next week" based on current date).
+3. For 'complete' or 'delete': Extract keywords or task numbers mentioned by the user that identify the target task (e.g., "the meeting", "task 1", "call Dan"). Put this identifier in the 'description' field.
+4. Do not create tasks for casual conversation, questions without action, past completed actions, or vague statements.
 
 Current date for reference: {current_date}
 User timezone: Asia/Jerusalem
 
-Respond with JSON only:
-{{"tasks": [{{"description": "task description", "due_date": "YYYY-MM-DD HH:MM" or null}}]}}
+Respond with JSON only, containing a list of identified tasks/actions:
+{{"tasks": [
+    {{
+        "action": "add" | "complete" | "delete" | "query", 
+        "description": "task description OR identifier for complete/delete", 
+        "due_date": "YYYY-MM-DD HH:MM" or null,
+        "status": "pending" | "completed" (only relevant for 'complete' action)
+    }}
+]}}
+
+Example for 'complete': If user says "Done with task 2", return: {{"tasks": [{{"action": "complete", "description": "2"}}]}}
+Example for 'add': If user says "Remind me to buy milk tomorrow morning", return: {{"tasks": [{{"action": "add", "description": "buy milk", "due_date": "YYYY-MM-DD 09:00"}}]}}
 
 Message to analyze: {message}"""
         }
@@ -191,13 +198,15 @@ Message to analyze: {message}"""
                 parsed_data = json.loads(cleaned_response) 
                 tasks = parsed_data.get('tasks', [])
                 
-                # Validate and clean tasks
+                # Validate and clean tasks - INCLUDING action field
                 valid_tasks = []
                 for task in tasks:
                     if task.get('description') and len(task['description'].strip()) > 0:
                         valid_tasks.append({
+                            'action': task.get('action', 'add'),  # Include action field
                             'description': task['description'].strip(),
-                            'due_date': task.get('due_date')
+                            'due_date': task.get('due_date'),
+                            'status': task.get('status', 'pending')  # Include status field
                         })
                 
                 self.circuit_breaker.record_success()
