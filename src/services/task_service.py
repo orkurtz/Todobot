@@ -257,7 +257,7 @@ class TaskService:
         
         formatted_tasks = []
         for i, task in enumerate(tasks, 1):
-            task_text = f"{i}. {task.description}"
+            task_text = f"{i}. {task.description} [#{task.id}]"
             
             if show_due_date and task.due_date:
                 # Convert UTC to Israel timezone for display
@@ -286,6 +286,7 @@ class TaskService:
         completed_tasks = []
         deleted_tasks = []
         failed_tasks = []
+        query_results = []
         
         for task_data in parsed_tasks:
             try:
@@ -328,6 +329,13 @@ class TaskService:
                     task = self.create_task(user_id, description, due_date)
                     created_tasks.append(task)
                 
+                elif action == 'query':
+                    # Query action - actually query the database!
+                    print(f"📋 Query action detected for: {description}")
+                    query_result = self._handle_query_action(user_id, description, task_data)
+                    if query_result:
+                        query_results.append(query_result)
+                
             except Exception as e:
                 print(f"❌ Failed to process task: {e}")
                 failed_tasks.append(task_data.get('description', 'Unknown task'))
@@ -352,6 +360,9 @@ class TaskService:
         if deleted_tasks:
             response_parts.append(f"🗑️ Deleted {len(deleted_tasks)} task{'s' if len(deleted_tasks) != 1 else ''}:\n" + "\n".join(deleted_tasks))
         
+        if query_results:
+            response_parts.append("\n".join(query_results))
+        
         if failed_tasks:
             response_parts.append(f"⚠️ Failed to process {len(failed_tasks)} task{'s' if len(failed_tasks) != 1 else ''}:\n" + "\n".join(failed_tasks))
         
@@ -360,16 +371,40 @@ class TaskService:
     def _handle_task_completion(self, user_id: int, description: str, original_message: str = None) -> Tuple[bool, str]:
         """Handle task completion based on description or number"""
         try:
-            # Check if description is a task number
+            # Check if description is a digit
             if description.isdigit():
-                task_number = int(description)
-                return self._complete_task_by_number(user_id, task_number)
+                task_id = int(description)
+                
+                # Try as task ID first (check if task with that ID exists for user)
+                success, message = self._complete_task_by_id(user_id, task_id)
+                if success:
+                    return success, message
+                
+                # If not found by ID, try as position number
+                return self._complete_task_by_number(user_id, task_id)
             
             # Otherwise, try to complete by description match
             return self._complete_task_by_description(user_id, description)
             
         except Exception as e:
             print(f"❌ Error handling task completion: {e}")
+            return False, str(e)
+    
+    def _complete_task_by_id(self, user_id: int, task_id: int) -> Tuple[bool, str]:
+        """Complete task by its database ID"""
+        try:
+            task = Task.query.filter_by(id=task_id, user_id=user_id, status='pending').first()
+            
+            if not task:
+                return False, f"Task #{task_id} not found or already completed"
+            
+            success, message = self.complete_task(task.id, user_id)
+            if success:
+                return True, f"#{task_id}: {task.description[:50]}..."
+            else:
+                return False, message
+        except Exception as e:
+            print(f"❌ Error completing task by ID: {e}")
             return False, str(e)
     
     def _complete_task_by_number(self, user_id: int, task_number: int) -> Tuple[bool, str]:
@@ -429,16 +464,40 @@ class TaskService:
     def _handle_task_deletion(self, user_id: int, description: str) -> Tuple[bool, str]:
         """Handle task deletion based on description or number"""
         try:
-            # Check if description is a task number
+            # Check if description is a digit
             if description.isdigit():
-                task_number = int(description)
-                return self._delete_task_by_number(user_id, task_number)
+                task_id = int(description)
+                
+                # Try as task ID first (check if task with that ID exists for user)
+                success, message = self._delete_task_by_id(user_id, task_id)
+                if success:
+                    return success, message
+                
+                # If not found by ID, try as position number
+                return self._delete_task_by_number(user_id, task_id)
             
             # Otherwise, try to delete by description match
             return self._delete_task_by_description(user_id, description)
             
         except Exception as e:
             print(f"❌ Error handling task deletion: {e}")
+            return False, str(e)
+    
+    def _delete_task_by_id(self, user_id: int, task_id: int) -> Tuple[bool, str]:
+        """Delete task by its database ID"""
+        try:
+            task = Task.query.filter_by(id=task_id, user_id=user_id, status='pending').first()
+            
+            if not task:
+                return False, f"Task #{task_id} not found"
+            
+            success, message = self.delete_task(task.id, user_id)
+            if success:
+                return True, f"#{task_id}: {task.description[:50]}..."
+            else:
+                return False, message
+        except Exception as e:
+            print(f"❌ Error deleting task by ID: {e}")
             return False, str(e)
     
     def _delete_task_by_number(self, user_id: int, task_number: int) -> Tuple[bool, str]:
@@ -494,3 +553,77 @@ class TaskService:
         except Exception as e:
             print(f"❌ Error deleting task by description: {e}")
             return False, str(e)
+    
+    def _handle_query_action(self, user_id: int, description: str, task_data: Dict) -> Optional[str]:
+        """Handle query action by actually querying the database"""
+        try:
+            query_lower = description.lower()
+            
+            # Count queries - "how many tasks", "כמה משימות"
+            if any(word in query_lower for word in ['כמה', 'how many', 'count']):
+                pending_tasks = self.get_user_tasks(user_id, status='pending')
+                if len(pending_tasks) == 0:
+                    return "📋 אין לך משימות פתוחות כרגע!"
+                elif len(pending_tasks) == 1:
+                    return "📋 יש לך משימה פתוחה אחת"
+                else:
+                    return f"📋 יש לך {len(pending_tasks)} משימות פתוחות"
+            
+            # When queries - "when is", "מתי"
+            elif any(word in query_lower for word in ['מתי', 'when']):
+                # Extract keywords from query (remove question words)
+                search_terms = query_lower
+                for stop_word in ['מתי', 'when', 'is', 'the', 'my', 'ה', 'את', 'של']:
+                    search_terms = search_terms.replace(stop_word, '')
+                search_terms = search_terms.strip()
+                
+                if not search_terms:
+                    return "❓ לא הבנתי איזו משימה אתה מחפש. נסה להיות יותר ספציפי."
+                
+                # Search for task
+                tasks = Task.query.filter(
+                    Task.user_id == user_id,
+                    Task.status == 'pending',
+                    Task.description.ilike(f"%{search_terms}%")
+                ).all()
+                
+                if not tasks:
+                    return f"❓ לא מצאתי משימה התואמת '{search_terms}'"
+                elif len(tasks) == 1:
+                    task = tasks[0]
+                    if task.due_date:
+                        local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                        return f"📅 {task.description}\nתאריך יעד: {local_time.strftime('%d/%m/%Y בשעה %H:%M')}"
+                    else:
+                        return f"📋 {task.description}\n(אין תאריך יעד מוגדר)"
+                else:
+                    result = f"מצאתי {len(tasks)} משימות התואמות:\n"
+                    for i, task in enumerate(tasks[:5], 1):
+                        if task.due_date:
+                            local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                            result += f"\n{i}. {task.description} - {local_time.strftime('%d/%m %H:%M')}"
+                        else:
+                            result += f"\n{i}. {task.description}"
+                    return result
+            
+            # Status/statistics queries
+            elif any(word in query_lower for word in ['מה המצב', 'status', 'statistics', 'סטטיסטיקה']):
+                stats = self.get_user_stats(user_id)
+                return f"📊 סטטיסטיקה:\n• משימות פתוחות: {stats['pending']}\n• הושלמו: {stats['completed']}\n• סה\"כ: {stats['total']}"
+            
+            # List queries - "what tasks", "מה המשימות"
+            elif any(word in query_lower for word in ['מה', 'what', 'show', 'list', 'הצג', 'רשימה']):
+                tasks = self.get_user_tasks(user_id, status='pending', limit=10)
+                if not tasks:
+                    return "📋 אין לך משימות פתוחות כרגע!"
+                
+                result = f"📋 המשימות שלך ({len(tasks)}):\n\n"
+                result += self.format_task_list(tasks)
+                return result
+            
+            # Default - return None to let AI response handle it
+            return None
+            
+        except Exception as e:
+            print(f"❌ Error handling query: {e}")
+            return None
