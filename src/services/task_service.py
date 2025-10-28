@@ -283,37 +283,58 @@ class TaskService:
             return ""
         
         created_tasks = []
+        completed_tasks = []
+        deleted_tasks = []
         failed_tasks = []
         
         for task_data in parsed_tasks:
             try:
+                action = task_data.get('action', 'add')
                 description = task_data.get('description', '').strip()
+                
                 if not description:
                     continue
                 
-                # Parse due date if provided
-                due_date = None
-                due_date_str = task_data.get('due_date')
-                if due_date_str:
-                    try:
-                        due_date = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M")
-                    except ValueError:
-                        # Try parsing as date only
-                        try:
-                            due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
-                            due_date = due_date.replace(hour=9, minute=0)  # Default to 9 AM
-                        except ValueError:
-                            pass
+                if action == 'complete':
+                    # Handle task completion
+                    success, message = self._handle_task_completion(user_id, description, original_message)
+                    if success:
+                        completed_tasks.append(message)
+                    else:
+                        failed_tasks.append(f"Failed to complete: {message}")
                 
-                # Create the task
-                task = self.create_task(user_id, description, due_date)
-                created_tasks.append(task)
+                elif action == 'delete':
+                    # Handle task deletion
+                    success, message = self._handle_task_deletion(user_id, description)
+                    if success:
+                        deleted_tasks.append(message)
+                    else:
+                        failed_tasks.append(f"Failed to delete: {message}")
+                
+                elif action == 'add':
+                    # Create new task
+                    due_date = None
+                    due_date_str = task_data.get('due_date')
+                    if due_date_str:
+                        try:
+                            due_date = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M")
+                        except ValueError:
+                            try:
+                                due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
+                                due_date = due_date.replace(hour=9, minute=0)  # Default to 9 AM
+                            except ValueError:
+                                pass
+                    
+                    task = self.create_task(user_id, description, due_date)
+                    created_tasks.append(task)
                 
             except Exception as e:
-                print(f"❌ Failed to create task from parsed data: {e}")
+                print(f"❌ Failed to process task: {e}")
                 failed_tasks.append(task_data.get('description', 'Unknown task'))
         
         # Build response message
+        response_parts = []
+        
         if created_tasks:
             task_summaries = []
             for task in created_tasks:
@@ -323,12 +344,153 @@ class TaskService:
                     summary += f" (Due: {local_time.strftime('%m/%d %H:%M')})"
                 task_summaries.append(summary)
             
-            response = f"Created {len(created_tasks)} task{'s' if len(created_tasks) != 1 else ''}:\n\n"
-            response += "\n".join(task_summaries)
-            
-            if failed_tasks:
-                response += f"\n\n⚠️ Failed to create {len(failed_tasks)} task(s)"
-            
-            return response
+            response_parts.append(f"Created {len(created_tasks)} task{'s' if len(created_tasks) != 1 else ''}:\n" + "\n".join(task_summaries))
         
-        return ""
+        if completed_tasks:
+            response_parts.append(f"✅ Completed {len(completed_tasks)} task{'s' if len(completed_tasks) != 1 else ''}:\n" + "\n".join(completed_tasks))
+        
+        if deleted_tasks:
+            response_parts.append(f"🗑️ Deleted {len(deleted_tasks)} task{'s' if len(deleted_tasks) != 1 else ''}:\n" + "\n".join(deleted_tasks))
+        
+        if failed_tasks:
+            response_parts.append(f"⚠️ Failed to process {len(failed_tasks)} task{'s' if len(failed_tasks) != 1 else ''}:\n" + "\n".join(failed_tasks))
+        
+        return "\n\n".join(response_parts) if response_parts else ""
+    
+    def _handle_task_completion(self, user_id: int, description: str, original_message: str = None) -> Tuple[bool, str]:
+        """Handle task completion based on description or number"""
+        try:
+            # Check if description is a task number
+            if description.isdigit():
+                task_number = int(description)
+                return self._complete_task_by_number(user_id, task_number)
+            
+            # Otherwise, try to complete by description match
+            return self._complete_task_by_description(user_id, description)
+            
+        except Exception as e:
+            print(f"❌ Error handling task completion: {e}")
+            return False, str(e)
+    
+    def _complete_task_by_number(self, user_id: int, task_number: int) -> Tuple[bool, str]:
+        """Complete task by its number in the list"""
+        try:
+            # Get pending tasks
+            tasks = self.get_user_tasks(user_id, status='pending', limit=100)
+            
+            if not tasks:
+                return False, "No pending tasks found"
+            
+            if task_number < 1 or task_number > len(tasks):
+                return False, f"Task number {task_number} not found. You have {len(tasks)} pending tasks."
+            
+            # Select the task by number (1-indexed)
+            task_to_complete = tasks[task_number - 1]
+            
+            # Mark as completed
+            success, message = self.complete_task(task_to_complete.id, user_id)
+            if success:
+                return True, f"Task {task_number}: {task_to_complete.description[:50]}..."
+            else:
+                return False, message
+                
+        except Exception as e:
+            print(f"❌ Error completing task by number: {e}")
+            return False, str(e)
+    
+    def _complete_task_by_description(self, user_id: int, description: str) -> Tuple[bool, str]:
+        """Complete task by matching description"""
+        try:
+            # Search for tasks with similar description
+            tasks = Task.query.filter(
+                Task.user_id == user_id,
+                Task.status == 'pending',
+                Task.description.ilike(f"%{description}%")
+            ).all()
+            
+            if not tasks:
+                return False, f"No pending task found matching '{description}'"
+            
+            if len(tasks) == 1:
+                # Single task found
+                success, message = self.complete_task(tasks[0].id, user_id)
+                if success:
+                    return True, f"{tasks[0].description[:50]}..."
+                else:
+                    return False, message
+            else:
+                # Multiple tasks found
+                return False, f"Multiple tasks found matching '{description}'. Please be more specific or use task number."
+                
+        except Exception as e:
+            print(f"❌ Error completing task by description: {e}")
+            return False, str(e)
+    
+    def _handle_task_deletion(self, user_id: int, description: str) -> Tuple[bool, str]:
+        """Handle task deletion based on description or number"""
+        try:
+            # Check if description is a task number
+            if description.isdigit():
+                task_number = int(description)
+                return self._delete_task_by_number(user_id, task_number)
+            
+            # Otherwise, try to delete by description match
+            return self._delete_task_by_description(user_id, description)
+            
+        except Exception as e:
+            print(f"❌ Error handling task deletion: {e}")
+            return False, str(e)
+    
+    def _delete_task_by_number(self, user_id: int, task_number: int) -> Tuple[bool, str]:
+        """Delete task by its number in the list"""
+        try:
+            # Get pending tasks
+            tasks = self.get_user_tasks(user_id, status='pending', limit=100)
+            
+            if not tasks:
+                return False, "No pending tasks found"
+            
+            if task_number < 1 or task_number > len(tasks):
+                return False, f"Task number {task_number} not found. You have {len(tasks)} pending tasks."
+            
+            # Select the task by number (1-indexed)
+            task_to_delete = tasks[task_number - 1]
+            
+            # Delete the task
+            success, message = self.delete_task(task_to_delete.id, user_id)
+            if success:
+                return True, f"Task {task_number}: {task_to_delete.description[:50]}..."
+            else:
+                return False, message
+                
+        except Exception as e:
+            print(f"❌ Error deleting task by number: {e}")
+            return False, str(e)
+    
+    def _delete_task_by_description(self, user_id: int, description: str) -> Tuple[bool, str]:
+        """Delete task by matching description"""
+        try:
+            # Search for tasks with similar description
+            tasks = Task.query.filter(
+                Task.user_id == user_id,
+                Task.status == 'pending',
+                Task.description.ilike(f"%{description}%")
+            ).all()
+            
+            if not tasks:
+                return False, f"No pending task found matching '{description}'"
+            
+            if len(tasks) == 1:
+                # Single task found
+                success, message = self.delete_task(tasks[0].id, user_id)
+                if success:
+                    return True, f"{tasks[0].description[:50]}..."
+                else:
+                    return False, message
+            else:
+                # Multiple tasks found
+                return False, f"Multiple tasks found matching '{description}'. Please be more specific or use task number."
+                
+        except Exception as e:
+            print(f"❌ Error deleting task by description: {e}")
+            return False, str(e)
