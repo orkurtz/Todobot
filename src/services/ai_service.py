@@ -23,7 +23,7 @@ class AIService:
         
         # Configure Gemini
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-2.5-pro')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Rate limiting and circuit breaker
         self.rate_limiter = APIRateLimiter(
