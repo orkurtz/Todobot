@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Todo Bot - Admin Dashboard</title>
+    <title>WhatsApp Todo Bot - לוח בקרה</title>
+    <link href="https://fonts.googleapis.com/css2?family=Alef:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * {
@@ -13,10 +14,12 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Alef', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: #f5f7fa;
             color: #2d3748;
             line-height: 1.6;
+            direction: rtl;
+            text-align: right;
         }
 
         .container {
@@ -27,6 +30,7 @@
 
         header {
             display: flex;
+            flex-direction: row-reverse;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 30px;
@@ -48,6 +52,7 @@
 
         .header-actions {
             display: flex;
+            flex-direction: row-reverse;
             gap: 12px;
         }
 
@@ -271,11 +276,11 @@
     <div class="container">
         <header>
             <h1>
-                🤖 WhatsApp Todo Bot Dashboard
+                🤖 לוח בקרה - בוט משימות WhatsApp
             </h1>
             <div class="header-actions">
-                <a href="/admin/health" class="btn btn-secondary">Health Check</a>
-                <button class="btn" onclick="refreshData()">Refresh</button>
+                <a href="/admin/health" class="btn btn-secondary">בדיקת תקינות</a>
+                <button class="btn" onclick="refreshData()">רענן</button>
             </div>
         </header>
 
@@ -283,10 +288,10 @@
             <div class="stat-card">
                 <div class="stat-header">
                     <div>
-                        <div class="stat-label">Total Users</div>
+                        <div class="stat-label">סה״כ משתמשים</div>
                         <div class="stat-number" id="totalUsers">{{ stats.users.total or 0 }}</div>
                         <div class="stat-change positive">
-                            ↗ +{{ stats.users.new_last_7d or 0 }} this week
+                            ↗ +{{ stats.users.new_last_7d or 0 }} השבוע
                         </div>
                     </div>
                     <div class="stat-icon users">👥</div>
@@ -296,10 +301,10 @@
             <div class="stat-card">
                 <div class="stat-header">
                     <div>
-                        <div class="stat-label">Active Users (24h)</div>
+                        <div class="stat-label">משתמשים פעילים (24 שעות)</div>
                         <div class="stat-number" id="activeUsers">{{ stats.users.active_last_24h or 0 }}</div>
                         <div class="stat-change neutral">
-                            {{ ((stats.users.active_last_24h / stats.users.total * 100) if stats.users.total > 0 else 0) | round(1) }}% of total
+                            {{ ((stats.users.active_last_24h / stats.users.total * 100) if stats.users.total > 0 else 0) | round(1) }}% מהסה״כ
                         </div>
                     </div>
                     <div class="stat-icon users">🟢</div>
@@ -309,10 +314,10 @@
             <div class="stat-card">
                 <div class="stat-header">
                     <div>
-                        <div class="stat-label">Total Tasks</div>
+                        <div class="stat-label">סה״כ משימות</div>
                         <div class="stat-number" id="totalTasks">{{ stats.tasks.total or 0 }}</div>
                         <div class="stat-change positive">
-                            ↗ +{{ stats.tasks.created_last_24h or 0 }} today
+                            ↗ +{{ stats.tasks.created_last_24h or 0 }} היום
                         </div>
                     </div>
                     <div class="stat-icon tasks">📝</div>
@@ -322,10 +327,10 @@
             <div class="stat-card">
                 <div class="stat-header">
                     <div>
-                        <div class="stat-label">Completion Rate</div>
+                        <div class="stat-label">אחוז השלמה</div>
                         <div class="stat-number" id="completionRate">{{ stats.tasks.completion_rate or 0 }}%</div>
                         <div class="stat-change positive">
-                            {{ stats.tasks.completed or 0 }}/{{ stats.tasks.total or 0 }} completed
+                            {{ stats.tasks.completed or 0 }}/{{ stats.tasks.total or 0 }} הושלמו
                         </div>
                     </div>
                     <div class="stat-icon completed">✅</div>
@@ -335,10 +340,10 @@
             <div class="stat-card">
                 <div class="stat-header">
                     <div>
-                        <div class="stat-label">Messages Today</div>
+                        <div class="stat-label">הודעות היום</div>
                         <div class="stat-number" id="messagesToday">{{ stats.messages.last_24h or 0 }}</div>
                         <div class="stat-change neutral">
-                            Total: {{ stats.messages.total or 0 }}
+                            סה״כ: {{ stats.messages.total or 0 }}
                         </div>
                     </div>
                     <div class="stat-icon messages">💬</div>
@@ -348,10 +353,10 @@
             <div class="stat-card">
                 <div class="stat-header">
                     <div>
-                        <div class="stat-label">Pending Tasks</div>
+                        <div class="stat-label">משימות ממתינות</div>
                         <div class="stat-number" id="pendingTasks">{{ stats.tasks.pending or 0 }}</div>
                         <div class="stat-change {{ 'positive' if (stats.tasks.pending or 0) == 0 else 'neutral' }}">
-                            {{ (stats.tasks.pending / stats.users.total) | round(1) if stats.users.total > 0 else 0 }} per user
+                            {{ (stats.tasks.pending / stats.users.total) | round(1) if stats.users.total > 0 else 0 }} למשתמש
                         </div>
                     </div>
                     <div class="stat-icon tasks">⏳</div>
@@ -361,42 +366,42 @@
 
         <div class="charts-section">
             <div class="chart-container">
-                <h3>📊 Weekly Activity</h3>
+                <h3>📊 פעילות שבועית</h3>
                 <div class="chart-wrapper">
                     <canvas id="activityChart"></canvas>
                 </div>
             </div>
             
             <div class="chart-container">
-                <h3>🏥 System Health</h3>
+                <h3>🏥 תקינות המערכת</h3>
                 <div class="health-status">
                     <div class="health-item healthy">
-                        <div class="health-label">Database</div>
-                        <div class="health-value healthy">✅ Connected</div>
+                        <div class="health-label">מסד נתונים</div>
+                        <div class="health-value healthy">✅ מחובר</div>
                     </div>
                     <div class="health-item {{ 'healthy' if redis_available else 'degraded' }}">
                         <div class="health-label">Redis</div>
                         <div class="health-value {{ 'healthy' if redis_available else 'degraded' }}">
-                            {{ '✅ Connected' if redis_available else '⚠️ Unavailable' }}
+                            {{ '✅ מחובר' if redis_available else '⚠️ לא זמין' }}
                         </div>
                     </div>
                     <div class="health-item {{ 'healthy' if ai_service_available else 'degraded' }}">
-                        <div class="health-label">AI Service</div>
+                        <div class="health-label">שירות AI</div>
                         <div class="health-value {{ 'healthy' if ai_service_available else 'degraded' }}">
-                            {{ '✅ Active' if ai_service_available else '⚠️ Inactive' }}
+                            {{ '✅ פעיל' if ai_service_available else '⚠️ לא פעיל' }}
                         </div>
                     </div>
                     <div class="health-item {{ 'healthy' if whatsapp_service_available else 'degraded' }}">
                         <div class="health-label">WhatsApp</div>
                         <div class="health-value {{ 'healthy' if whatsapp_service_available else 'degraded' }}">
-                            {{ '✅ Active' if whatsapp_service_available else '⚠️ Inactive' }}
+                            {{ '✅ פעיל' if whatsapp_service_available else '⚠️ לא פעיל' }}
                         </div>
                     </div>
                 </div>
                 
                 <div style="margin-top: 20px; padding: 16px; background: #f8fafc; border-radius: 8px;">
-                    <div class="health-label">Uptime</div>
-                    <div style="font-weight: 600; color: #1a202c;">{{ uptime or 'Unknown' }}</div>
+                    <div class="health-label">זמן פעילות</div>
+                    <div style="font-weight: 600; color: #1a202c;">{{ uptime or 'לא ידוע' }}</div>
                 </div>
             </div>
         </div>
