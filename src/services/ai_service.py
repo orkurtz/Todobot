@@ -248,6 +248,164 @@ Message to analyze: {message}"""
             self.circuit_breaker.record_failure(e)
             return []
     
+    def parse_tasks_from_audio(self, audio_data: bytes, mime_type: str = "audio/ogg") -> List[Dict[str, Any]]:
+        """
+        Parse tasks from audio using Gemini's multimodal capabilities
+        Transcribes and extracts tasks in one API call
+        """
+        from datetime import datetime
+        import tempfile
+        import os
+        
+        try:
+            # Check rate limiting
+            allowed, error_msg = self.rate_limiter.is_allowed()
+            if not allowed:
+                print(f"Rate limit exceeded for audio task parsing: {error_msg}")
+                return []
+            
+            # Check circuit breaker
+            available, status_msg = self.circuit_breaker.is_available()
+            if not available:
+                print(f"Circuit breaker open for audio task parsing: {status_msg}")
+                return []
+            
+            current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+            
+            # Build prompt for audio transcription + task extraction
+            audio_prompt = f"""You are an expert at understanding voice messages in Hebrew and English and extracting actionable tasks.
+
+Listen to this audio message and:
+1. Transcribe what the person is saying
+2. Extract any tasks or to-do items mentioned
+3. Identify due dates mentioned (in Hebrew or English)
+
+Current date for reference: {current_date}
+User timezone: Asia/Jerusalem (Israel)
+
+Return JSON in this exact format:
+{{
+    "transcription": "the transcribed text here",
+    "tasks": [
+        {{
+            "action": "add" | "complete" | "delete" | "update" | "reschedule" | "query",
+            "description": "task description",
+            "due_date": "natural language date like 'מחר', 'tomorrow', 'יום שלישי'" or null,
+            "task_id": task number if mentioned or null,
+            "new_description": "new description for update action" or null
+        }}
+    ]
+}}
+
+Examples:
+Hebrew audio "תזכיר לי לקנות חלב מחר בשעה חמש" → 
+{{
+    "transcription": "תזכיר לי לקנות חלב מחר בשעה חמש",
+    "tasks": [{{"action": "add", "description": "לקנות חלב", "due_date": "מחר בשעה 17:00"}}]
+}}
+
+English audio "remind me to call mom tomorrow at 3pm" →
+{{
+    "transcription": "remind me to call mom tomorrow at 3pm",
+    "tasks": [{{"action": "add", "description": "call mom", "due_date": "tomorrow at 15:00"}}]
+}}
+
+Hebrew audio "סיימתי את משימה 2" →
+{{
+    "transcription": "סיימתי את משימה 2",
+    "tasks": [{{"action": "complete", "description": "2", "task_id": "2"}}]
+}}
+
+If the audio is just conversation with no tasks, return empty tasks array.
+Always include the transcription for transparency.
+"""
+
+            # Save audio to temporary file for Gemini upload
+            print(f"📤 Preparing audio for Gemini ({len(audio_data)} bytes)...")
+            
+            # Determine file extension from mime_type
+            extension = '.ogg'
+            if 'opus' in mime_type.lower():
+                extension = '.opus'
+            elif 'mpeg' in mime_type.lower() or 'mp3' in mime_type.lower():
+                extension = '.mp3'
+            elif 'wav' in mime_type.lower():
+                extension = '.wav'
+            
+            # Create temporary file
+            with tempfile.NamedTemporaryFile(suffix=extension, delete=False) as temp_file:
+                temp_file.write(audio_data)
+                temp_path = temp_file.name
+            
+            try:
+                # Upload audio file to Gemini
+                print(f"📤 Uploading audio to Gemini...")
+                audio_file = genai.upload_file(path=temp_path, mime_type=mime_type)
+                print(f"✅ Audio uploaded to Gemini: {audio_file.name}")
+                
+                # Generate content with audio + prompt
+                print("🤖 Processing audio with Gemini...")
+                response = self.model.generate_content([audio_prompt, audio_file])
+                
+                if not response or not response.text:
+                    print("⚠️ Empty response from Gemini for audio")
+                    return []
+                
+                response_text = response.text
+                print(f"📄 Gemini audio response: {response_text[:200]}...")
+                
+                # Parse JSON response
+                match = re.search(r"\{.*\}", response_text, re.DOTALL)
+                if not match:
+                    print(f"❌ No JSON found in Gemini audio response")
+                    return []
+                
+                cleaned_response = match.group(0)
+                
+                try:
+                    parsed_data = json.loads(cleaned_response)
+                    transcription = parsed_data.get('transcription', '')
+                    tasks = parsed_data.get('tasks', [])
+                    
+                    print(f"🎤 Transcription: {transcription}")
+                    print(f"📋 Extracted {len(tasks)} tasks from audio")
+                    
+                    # Validate and clean tasks
+                    valid_tasks = []
+                    for task in tasks:
+                        if task.get('description') and len(task['description'].strip()) > 0:
+                            valid_tasks.append({
+                                'action': task.get('action', 'add'),
+                                'description': task['description'].strip(),
+                                'due_date': task.get('due_date'),
+                                'status': task.get('status', 'pending'),
+                                'task_id': task.get('task_id'),
+                                'new_description': task.get('new_description'),
+                                'transcription': transcription  # Include transcription
+                            })
+                    
+                    self.circuit_breaker.record_success()
+                    return valid_tasks
+                    
+                except json.JSONDecodeError as e:
+                    print(f"❌ Failed to parse Gemini audio response as JSON: {e}")
+                    print(f"Raw response: {response_text}")
+                    return []
+                    
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(temp_path)
+                except Exception:
+                    pass
+            
+        except Exception as e:
+            print(f"❌ Audio task parsing error: {e}")
+            import traceback
+            traceback.print_exc()
+            self.circuit_breaker.record_failure(e)
+            return []
+    
     def _make_api_call_with_retry(self, prompt: str, max_retries: int = 3) -> str:
         """Make Gemini API call with exponential backoff retry"""
         for attempt in range(max_retries):

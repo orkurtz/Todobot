@@ -139,6 +139,7 @@ def process_incoming_message(message, value):
         timestamp = message.get('timestamp')
         
         print(f"📱 Incoming {message_type} message from {from_number}")
+        print(f"🔍 Message structure: {json.dumps(message, indent=2)}")
         
         # Get or create user
         user = get_or_create_user(from_number)
@@ -154,7 +155,7 @@ def process_incoming_message(message, value):
         # Process different message types
         if message_type == 'text':
             process_text_message(message, user, whatsapp_service, ai_service)
-        elif message_type == 'audio':
+        elif message_type in ['audio', 'voice']:  # Support both audio and voice
             process_voice_message(message, user, whatsapp_service, ai_service)
         elif message_type == 'button':
             process_button_message(message, user, whatsapp_service)
@@ -237,17 +238,100 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         )
 
 def process_voice_message(message, user, whatsapp_service, ai_service):
-    """Process voice message"""
+    """Process voice message using Gemini multimodal API"""
     try:
-        # For now, send a message that voice is not supported
-        # Voice processing requires media downloading and transcription
+        from ..app import ai_service
+        from ..utils.media_handler import media_handler
+        
+        # Get audio details from message
+        audio = message.get('audio', {})
+        voice = message.get('voice', {})
+        
+        # Try both possible field names
+        media_id = audio.get('id') or voice.get('id')
+        
+        if not media_id:
+            print(f"❌ No media ID in voice message")
+            print(f"Message data: {json.dumps(message, indent=2)}")
+            whatsapp_service.send_message(
+                user.phone_number,
+                "❌ לא הצלחתי לקבל את ההודעה הקולית. נסה שוב."
+            )
+            return
+        
+        print(f"🎤 Processing voice message, media ID: {media_id}")
+        
+        # Send "processing" acknowledgment
         whatsapp_service.send_message(
             user.phone_number,
-            "🎤 Voice messages are not supported yet. Please send me a text message instead!"
+            "🎤 מעבד את ההודעה הקולית..."
+        )
+        
+        # Download audio from WhatsApp
+        media_result = media_handler.download_whatsapp_media(media_id)
+        
+        if not media_result:
+            whatsapp_service.send_message(
+                user.phone_number,
+                "❌ לא הצלחתי להוריד את ההודעה הקולית. נסה שוב."
+            )
+            return
+        
+        audio_data, mime_type = media_result
+        
+        # Process with Gemini (transcribe + extract tasks in one call)
+        parsed_tasks = ai_service.parse_tasks_from_audio(audio_data, mime_type)
+        
+        if not parsed_tasks:
+            whatsapp_service.send_message(
+                user.phone_number,
+                "🎤 קיבלתי את ההודעה הקולית, אבל לא זיהיתי משימות. אם רצית ליצור משימה, נסה שוב או כתוב הודעת טקסט."
+            )
+            return
+        
+        # Get transcription from first task (Gemini includes it)
+        transcription = parsed_tasks[0].get('transcription', '') if parsed_tasks else ''
+        
+        print(f"🎤 Transcription: {transcription}")
+        print(f"📋 Parsed {len(parsed_tasks)} tasks from voice")
+        
+        # Execute the parsed tasks
+        task_summary = task_service.execute_parsed_tasks(user.id, parsed_tasks, transcription)
+        
+        # Build response with transcription
+        response_parts = []
+        
+        if transcription:
+            response_parts.append(f"🎤 שמעתי: \"{transcription}\"")
+        
+        if task_summary:
+            response_parts.append(task_summary)
+        else:
+            response_parts.append("✅ קיבלתי את ההודעה")
+        
+        full_response = "\n\n".join(response_parts)
+        
+        # Send response
+        whatsapp_service.send_message(user.phone_number, full_response)
+        
+        # Save to database
+        save_message(
+            user.id,
+            'audio',
+            transcription,
+            full_response,
+            parsed_tasks,
+            message.get('id')
         )
         
     except Exception as e:
         print(f"❌ Error processing voice message: {e}")
+        import traceback
+        traceback.print_exc()
+        whatsapp_service.send_message(
+            user.phone_number,
+            "❌ שגיאה בעיבוד ההודעה הקולית. אפשר לנסות שוב או לכתוב הודעה."
+        )
 
 def process_button_message(message, user, whatsapp_service):
     """Process button click"""

@@ -362,14 +362,19 @@ class TaskService:
                     due_date = None
                     due_date_str = task_data.get('due_date')
                     if due_date_str:
-                        try:
-                            due_date = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M")
-                        except ValueError:
+                        # Try natural language parsing FIRST (supports Hebrew!)
+                        due_date = self.parse_date_from_text(due_date_str)
+                        
+                        # If natural language parsing fails, try standard formats as fallback
+                        if not due_date:
                             try:
-                                due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
-                                due_date = due_date.replace(hour=9, minute=0)  # Default to 9 AM
+                                due_date = datetime.strptime(due_date_str, "%Y-%m-%d %H:%M")
                             except ValueError:
-                                pass
+                                try:
+                                    due_date = datetime.strptime(due_date_str, "%Y-%m-%d")
+                                    due_date = due_date.replace(hour=9, minute=0)  # Default to 9 AM
+                                except ValueError:
+                                    print(f"⚠️ Could not parse due date: '{due_date_str}'")
                     
                     task = self.create_task(user_id, description, due_date)
                     created_tasks.append(task)
