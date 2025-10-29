@@ -253,7 +253,9 @@ Message to analyze: {message}"""
                             'action': task.get('action', 'add'),  # Include action field
                             'description': task['description'].strip(),
                             'due_date': task.get('due_date'),
-                            'status': task.get('status', 'pending')  # Include status field
+                            'status': task.get('status', 'pending'),  # Include status field
+                            'task_id': task.get('task_id'),  # Include task_id for update/reschedule/complete
+                            'new_description': task.get('new_description')  # Include new_description for updates
                         })
                 
                 self.circuit_breaker.record_success()

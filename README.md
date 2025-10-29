@@ -1,12 +1,11 @@
 # 🤖 WhatsApp Todo Bot
 
-
 <div align="center">
   <img src="assets/images/todo.png" alt="WhatsApp Todo Bot" width="400">
   
   <p><strong>An intelligent AI-powered personal assistant that helps you manage tasks and stay organized through WhatsApp.</strong></p>
   
-  <p>The bot understands natural Hebrew language, extracts actionable tasks, and provides smart reminders for Israeli users.</p>
+  <p>The bot understands natural Hebrew and English language, extracts actionable tasks from text AND voice messages, and provides smart reminders optimized for Israeli users.</p>
 
   <p>
     <a href="#-try-it-now---live-demo"><strong>🚀 Try Now</strong></a> •
@@ -21,7 +20,7 @@
     <img src="https://img.shields.io/badge/Python-3.8+-blue?style=for-the-badge&logo=python" alt="Python">
     <img src="https://img.shields.io/badge/Flask-Framework-green?style=for-the-badge&logo=flask" alt="Flask">
     <img src="https://img.shields.io/badge/WhatsApp-Business%20API-25D366?style=for-the-badge&logo=whatsapp" alt="WhatsApp">
-    <img src="https://img.shields.io/badge/AI-Google%20Gemini-4285F4?style=for-the-badge&logo=google" alt="Google Gemini">
+    <img src="https://img.shields.io/badge/AI-Google%20Gemini%202.5%20Flash-4285F4?style=for-the-badge&logo=google" alt="Google Gemini">
   </p>
   
   <p>
@@ -43,25 +42,27 @@
       <td align="center">
         <strong>📝 Natural Language Input</strong><br>
         <em>"Call mom tomorrow at 3pm"</em><br>
-        <em>"Buy groceries today"</em><br>
-        <em>"Meeting with John next Monday"</em>
+        <em>"תזכיר לי לקנות חלב בעוד 10 דקות"</em><br>
+        <em>🎤 Voice: "פגישה עם יוחנן מחר בבוקר"</em>
       </td>
       <td align="center">
         <strong>🤖 AI Processing</strong><br>
         ✅ Task extracted<br>
-        📅 Due date parsed<br>
+        📅 Due date parsed (Hebrew & English)<br>
+        🎤 Voice transcribed & understood<br>
         🔔 Reminder scheduled
       </td>
       <td align="center">
         <strong>📲 WhatsApp Response</strong><br>
-        <em>"Created 1 task: Call mom (Due: tomorrow 15:00)"</em><br>
-        <em>"Task added to your list!"</em><br>
-        <em>"Reminder set for 2:45 PM"</em>
+        <em>"נוצרה משימה: Call mom"</em><br>
+        <em>"🎤 שמעתי: 'לקנות חלב'"</em><br>
+        <em>"✅ תזכורת נקבעה ל-14:30"</em>
       </td>
     </tr>
   </table>
 
-  <p><strong>🇮🇱 Hebrew Language Support:</strong> Optimized for Hebrew speakers and Israeli timezone!</p>
+  <p><strong>🇮🇱 Hebrew Language Support:</strong> Optimized for Hebrew speakers with Israeli timezone!</p>
+  <p><strong>🎤 Voice Message Support:</strong> Send voice notes in Hebrew or English - they'll be transcribed and understood!</p>
   
   <p>
     <a href="https://wa.me/972559664336" target="_blank">
@@ -69,7 +70,7 @@
     </a>
   </p>
   
-  <p><em>Click above to test the bot directly on WhatsApp! Just send a message like "לקנות חלב מחר בחמש" and see the magic happen! ✨</em></p>
+  <p><em>Click above to test the bot directly on WhatsApp! Just send a text message like "לקנות חלב מחר בחמש" or a voice note and see the magic happen! ✨</em></p>
 </div>
 
 ## 🚀 Try It Now - Live Demo!
@@ -83,39 +84,40 @@
     </a>
   </p>
   
-  <h4>📝 Try These Example Messages in Hebrew:</h4>
+  <h4>📝 Try These Example Messages:</h4>
   <table>
     <tr>
-      <td><strong>📝 Task Examples</strong></td>
-      <td><strong>📅 With Due Dates</strong></td>
-      <td><strong>🔧 Commands</strong></td>
+      <td><strong>📝 Basic Tasks</strong></td>
+      <td><strong>⏰ With Relative Times</strong></td>
+      <td><strong>🔧 Task Management</strong></td>
     </tr>
     <tr>
       <td>
-        • "לקנות חלב"<br>
-        • "להתקשר לאמא"<br>
-        • "לסיים פרויקט"<br>
-        • "פגישה עם מנהל"
+        • "לקנות חלב מחר"<br>
+        • "פגישה עם מנהל ביום ראשון"<br>
+        • 🎤 <em>Voice: "להתקשר לאמא"</em><br>
+        • "Meeting with John next Monday"
       </td>
       <td>
-        • "לקנות חלב היום"<br>
-        • "פגישה עם הרופא מחר ב-15:00"<br>
-        • "להתקשר לבנק ביום ראשון"<br>
-        • "לסיים דוח עד יום חמישי"
+        • "תזכיר לי בעוד 5 דקות"<br>
+        • "דחה משימה 2 בשעתיים"<br>
+        • "remind me in 10 minutes"<br>
+        • "העבר משימה 3 למחר ב-15:00"
       </td>
       <td>
+        • "סיימתי משימה 2"<br>
+        • "שנה משימה 1 לקנות לחם"<br>
         • "המשימות שלי"<br>
-        • "עזרה"<br>
         • "סטטיסטיקה"<br>
-        • "משימות הושלמו"
+        • "עזרה"
       </td>
     </tr>
   </table>
   
   <p><strong>⚡ What happens next?</strong><br>
-  The bot will instantly parse your Hebrew message, extract tasks, understand due dates, and create reminders - all through natural conversation!</p>
+  The bot will instantly parse your message (text or voice!), extract tasks, understand due dates in Hebrew or English, and create reminders - all through natural conversation!</p>
   
-  <p><em>💡 Tip: The bot is optimized for Hebrew speakers and follows the Israeli timezone (Asia/Jerusalem)!</em></p>
+  <p><em>💡 Tip: Try sending a voice message in Hebrew - the bot transcribes AND understands it!</em></p>
 </div>
 
 ---
@@ -123,39 +125,58 @@
 ## ✨ Features
 
 ### 🎯 Smart Task Management
-- **Natural Language Processing**: Just tell the bot what you need to do
+- **Natural Language Processing**: Just tell the bot what you need to do (text or voice!)
 - **Automatic Task Extraction**: AI identifies actionable items from your messages
-- **Hebrew Date Recognition**: מבין תאריכים כמו "מחר ב-15:00", "יום ראשון", "היום בערב"
+- **Voice Message Support**: 🎤 Send voice notes in Hebrew or English - automatic transcription + task extraction
+- **Task Updates**: Change task descriptions with `"שנה משימה 2 להתקשר לרופא"`
+- **Task Rescheduling**: Move due dates with `"דחה משימה 3 למחר"` or `"postpone task 5 by 2 hours"`
 - **Task Status Tracking**: Pending, completed, and progress tracking
+- **Smart Task Queries**: Ask questions like `"מתי הפגישה עם יוחנן?"` and get real-time answers
+
+### ⏱️ Advanced Date & Time Understanding
+- **Hebrew Relative Times**: `"בעוד 5 דקות"`, `"בעוד שעתיים"`, `"בעוד שבוע"`
+- **English Relative Times**: `"in 2 minutes"`, `"in half an hour"`, `"next week"`
+- **Hebrew Dates**: `"היום"`, `"מחר"`, `"מחרתיים"`, `"יום ראשון"`
+- **English Dates**: `"today"`, `"tomorrow"`, `"next Monday at 3pm"`
+- **Exact Times**: `"מחר ב-15:00"`, `"tomorrow at 3pm"`
 
 ### 🇮🇱 Hebrew Language Optimization
 - **Natural Hebrew**: מבין עברית בצורה טבעית ומדויקת
 - **Israeli Context**: מותאם לזמן ישראלי ותרבות מקומית
-- **Hebrew Date Parsing**: מבין תאריכים בעברית כמו "היום", "מחר", "יום ראשון"
+- **Hebrew Date Parsing**: מבין תאריכים בעברית כמו "היום", "מחר", "בעוד שעה"
 - **Local Timezone**: עובד לפי שעון ישראל (Asia/Jerusalem)
 
+### 🎤 Voice Message Features
+- **Automatic Transcription**: Voice-to-text in Hebrew and English
+- **Direct Task Extraction**: AI understands tasks from voice in one go
+- **Powered by Gemini 2.5 Flash**: Latest Google AI for multimodal processing
+- **No External Services**: All processing happens in one API call
+
+### 🛡️ Reliability & Performance
+- **Circuit Breaker Pattern**: Automatic API failure detection and recovery
+- **Advanced Rate Limiting**: Multi-tier protection (per minute/hour/day)
+- **Redis-Backed Caching**: Fast and reliable with fallback to in-memory storage
+- **Exponential Backoff**: Automatic retry logic for transient failures
+- **Robust Error Handling**: Graceful degradation and user-friendly error messages
+
 ### 🔒 Privacy & Security
-- **End-to-End Encryption**: All user data is encrypted at rest
+- **End-to-End Encryption**: All user data encrypted at rest (AES-256)
 - **No Data Mining**: Your conversations are private and secure
 - **GDPR Compliant**: Built with privacy regulations in mind
+- **Secure Hash Lookups**: Phone numbers hashed for database searches
 
 ### 📊 Productivity Insights
 - **Statistics Dashboard**: Track your productivity over time
 - **Completion Rates**: See how well you're doing with your goals
 - **Usage Analytics**: Understand your task management patterns
-
-### ⚡ Smart Features
-- **Voice Message Support**: Send voice notes (Hebrew/English)
-- **Reminder System**: Get notified when tasks are due
-- **Quick Commands**: Fast access with simple commands
-- **Rate Limiting**: Built-in protection against spam
+- **Due Date Tracking**: Overdue and today's tasks highlighted
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Python 3.8+
 - PostgreSQL database
-- Redis (optional, for caching)
+- Redis (optional, for caching and rate limiting)
 - WhatsApp Business API access
 - Google Gemini API key
 
@@ -214,19 +235,19 @@ DATABASE_URL=postgresql://user:password@localhost:5432/whatsapp_todo
 WHATSAPP_TOKEN=your-whatsapp-business-api-token
 WEBHOOK_VERIFY_TOKEN=your-webhook-verify-token
 
-# Google Gemini AI
+# Google Gemini AI (2.5 Flash)
 GEMINI_API_KEY=your-gemini-api-key
 
-# Redis (Optional)
+# Redis (Optional but recommended for rate limiting)
 REDIS_URL=redis://localhost:6379
 
 # Encryption
 ENCRYPTION_KEY=your-base64-encryption-key
 
-# Rate Limiting
-RATE_LIMIT_REQUESTS_PER_MINUTE=10
-RATE_LIMIT_REQUESTS_PER_HOUR=100
-RATE_LIMIT_REQUESTS_PER_DAY=500
+# Rate Limiting (API protection)
+RATE_LIMIT_REQUESTS_PER_MINUTE=30
+RATE_LIMIT_REQUESTS_PER_HOUR=1000
+RATE_LIMIT_REQUESTS_PER_DAY=10000
 ```
 
 ### WhatsApp Business API Setup
@@ -242,30 +263,30 @@ RATE_LIMIT_REQUESTS_PER_DAY=500
 Todobot/
 ├── src/                    # Source code
 │   ├── models/            # Database models
-│   │   └── database.py    # SQLAlchemy models
+│   │   └── database.py    # SQLAlchemy models with encryption
 │   ├── services/          # Business logic services
-│   │   ├── ai_service.py      # AI/Gemini integration
+│   │   ├── ai_service.py      # AI/Gemini integration (with voice support)
 │   │   ├── whatsapp_service.py # WhatsApp API client
-│   │   ├── task_service.py     # Task management
-│   │   └── encryption.py      # Data encryption
+│   │   ├── task_service.py     # Task management (CRUD + update/reschedule)
+│   │   ├── encryption.py      # Data encryption (AES-256)
+│   │   ├── scheduler_service.py # Background task scheduling
+│   │   └── monitoring_service.py # System monitoring
 │   ├── utils/             # Utility functions
-│   │   ├── rate_limiter.py    # Rate limiting
+│   │   ├── rate_limiter.py    # Rate limiting (Redis-backed)
 │   │   ├── circuit_breaker.py # Circuit breaker pattern
+│   │   ├── media_handler.py   # WhatsApp media downloads
 │   │   └── validation.py      # Input validation
 │   ├── routes/            # Flask routes
-│   │   ├── webhook.py     # WhatsApp webhook handler
+│   │   ├── webhook.py     # WhatsApp webhook handler (text + voice)
 │   │   ├── admin.py       # Admin dashboard
 │   │   └── api.py         # REST API endpoints
 │   ├── config/            # Configuration
 │   │   └── settings.py    # App configuration
 │   └── app.py            # Flask application factory
 ├── app.py                # Main application entry point
-├── worker.py             # Background worker process
+├── worker_simple.py      # Background worker process
 ├── requirements.txt      # Python dependencies
-├── setup.py             # Package setup
 ├── Procfile             # Railway/Heroku deployment
-├── .env                 # Environment variables (hidden file)
-├── .env.example         # Environment template (hidden file)
 └── README.md            # This file
 ```
 
@@ -282,20 +303,70 @@ Send these messages to the bot:
 
 ### Natural Language Examples
 
-#### Hebrew Examples
-- "להתקשר לאמא מחר ב-15:00"
-- "לקנות מצרכים היום"
-- "פגישה עם יוחנן ביום ראשון ב-10:00"
-- "לסיים את הדוח עד יום שישי"
-- "לזכור לשלם חשמל עד יום רביעי"
-- "להזמין מסעדה לשבת ב-19:30"
+#### 📝 Hebrew Text Examples
+- **Create Tasks:**
+  - "להתקשר לאמא מחר ב-15:00"
+  - "לקנות מצרכים היום"
+  - "פגישה עם יוחנן ביום ראשון ב-10:00"
+  - "תזכיר לי בעוד 5 דקות לצאת"
+  - "בעוד שעה תזכיר לי לסגור את המחשב"
 
-### Task Management
+- **Update Tasks:**
+  - "שנה משימה 2 להתקשר לרופא"
+  - "עדכן משימה 3 קנה לחם"
 
-- React with 👍 to any message to mark related tasks as completed
-- Tasks with due dates will send reminders
-- Overdue tasks will be highlighted with ⚠️
-- Tasks due today will show 🔥
+- **Reschedule Tasks:**
+  - "דחה משימה 1 למחר"
+  - "העבר משימה 2 בעוד שעתיים"
+  - "דחה 3 ביומיים"
+
+- **Complete Tasks:**
+  - "סיימתי משימה 2"
+  - "גמרתי את 1"
+
+#### 🎤 Hebrew Voice Examples
+- **Send voice notes saying:**
+  - "תזכיר לי לקנות חלב מחר בשעה חמש"
+  - "סיימתי את משימה שתיים"
+  - "פגישה עם הרופא ביום רביעי בעשר"
+  - "בעוד עשר דקות תזכיר לי לצאת מהבית"
+
+#### 📝 English Text Examples
+- "remind me in 2 minutes to call John"
+- "meeting with Sarah tomorrow at 3pm"
+- "postpone task 2 by 2 hours"
+- "change task 1 to buy bread"
+
+#### 🎤 English Voice Examples
+- **Send voice notes saying:**
+  - "remind me to call mom tomorrow at three PM"
+  - "done with task number two"
+
+### Task Management Actions
+
+#### ✅ Complete Tasks
+- React with 👍 to any message
+- "סיימתי משימה 2" / "done with task 2"
+- "גמרתי את 1" / "finished 1"
+
+#### 📝 Update Tasks
+- "שנה משימה 3 להתקשר לרופא" (change description)
+- "עדכן משימה 5 קנה חלב מחר ב-10" (change description + due date)
+
+#### ⏰ Reschedule Tasks
+- "דחה משימה 2 למחר" / "postpone task 2 to tomorrow"
+- "העבר משימה 1 בעוד שעתיים" / "move task 1 in 2 hours"
+- "דחה 3 ליום שלישי" / "reschedule 3 to Tuesday"
+
+#### ❓ Query Tasks
+- "מתי הפגישה עם יוחנן?" / "when is the meeting with John?"
+- "כמה משימות יש לי?" / "how many tasks do I have?"
+
+### Task Reminders
+
+- Tasks with due dates will send reminders 15 minutes before
+- Overdue tasks are highlighted with ⚠️
+- Tasks due today show 🔥
 
 ## 🚀 Deployment
 
@@ -304,6 +375,7 @@ Send these messages to the bot:
 1. Connect your GitHub repository to Railway
 2. Set environment variables in Railway dashboard
 3. Deploy automatically with git push
+4. Enable Redis add-on for rate limiting
 
 ### Docker
 
@@ -369,24 +441,28 @@ flask db downgrade
 Access the admin dashboard at `/admin/dashboard` to monitor:
 
 - User statistics
-- Message volume
+- Message volume (text + voice)
 - Task completion rates
 - System health status
+- API rate limit usage
+- Circuit breaker status
 
 ## 🔐 Security
 
 ### Data Protection
 
-- All user data is encrypted using AES-256
-- Phone numbers are hashed for lookups
-- Messages are encrypted at rest
-- No conversation data is logged
+- All user data encrypted using AES-256
+- Phone numbers hashed for lookups
+- Messages encrypted at rest
+- No conversation data logged
+- Voice messages processed and immediately discarded
 
-### Rate Limiting
+### API Protection
 
-- Per-user message limits
-- API rate limiting
-- Circuit breaker protection
+- Circuit breaker pattern for API resilience
+- Multi-tier rate limiting (minute/hour/day)
+- Redis-backed rate limit tracking
+- Exponential backoff for retries
 - Input validation and sanitization
 
 ### Best Practices
@@ -400,29 +476,71 @@ Access the admin dashboard at `/admin/dashboard` to monitor:
 
 ### Common Issues
 
-1. **Database Connection Issues**
+1. **Voice Message Processing Failures**
+   ```bash
+   # Check WhatsApp media permissions
+   # Verify WHATSAPP_TOKEN has media download rights
+   # Check Gemini API quota for multimodal requests
+   ```
+
+2. **Database Connection Issues**
    ```bash
    # Check database connection
    python -c "from src.models.database import db; print('Connected')"
    ```
 
-2. **WhatsApp API Issues**
+3. **WhatsApp API Issues**
    - Verify webhook URL is accessible
    - Check token permissions
    - Ensure phone number is verified
 
-3. **AI Service Issues**
+4. **AI Service Issues**
    - Verify Gemini API key is valid
    - Check API quota limits
-   - Monitor rate limiting
+   - Monitor rate limiting and circuit breaker status
 
 ### Logs
 
 Application logs include:
 - Request/response details
+- Voice transcription results
+- Task extraction results
 - Error messages with context
 - Performance metrics
-- Security events
+- Circuit breaker state changes
+- Rate limit violations
+
+## 🆕 What's New
+
+### Recent Updates (Past 3 Days)
+
+#### 🎤 Voice Message Support (NEW!)
+- Full voice message transcription using Gemini 2.5 Flash multimodal API
+- Automatic task extraction from Hebrew and English voice notes
+- Single API call for transcription + task parsing
+- Media download handler for WhatsApp audio files
+
+#### ⏰ Advanced Time Parsing (NEW!)
+- Hebrew relative times: "בעוד 5 דקות", "בעוד שעתיים"
+- English relative times: "in 2 minutes", "in half an hour"
+- Enhanced natural language understanding for dates
+
+#### 🔄 Task Update & Reschedule (NEW!)
+- Update task descriptions: "שנה משימה 2 להתקשר לרופא"
+- Reschedule tasks: "דחה משימה 3 למחר"
+- Combined updates: change description + due date together
+
+#### 🛡️ Reliability Improvements (NEW!)
+- Circuit breaker pattern for API failure recovery
+- Advanced rate limiting with Redis backend
+- Improved JSON parsing from AI responses
+- Better error handling throughout
+
+#### 🤖 AI Enhancements (NEW!)
+- Upgraded to Gemini 2.5 Flash model
+- Better prompt engineering for task actions
+- Support for task queries with real-time database results
+- Fixed JSON parsing issues with code blocks
 
 ## 📄 License
 
@@ -430,10 +548,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Google Gemini](https://ai.google.dev/) for AI capabilities
-- [WhatsApp Business API](https://developers.facebook.com/docs/whatsapp) for messaging
+- [Google Gemini 2.5 Flash](https://ai.google.dev/) for powerful AI capabilities (text + voice)
+- [WhatsApp Business API](https://developers.facebook.com/docs/whatsapp) for messaging platform
 - [Flask](https://flask.palletsprojects.com/) for the web framework
 - [SQLAlchemy](https://www.sqlalchemy.org/) for database management
+- [Redis](https://redis.io/) for caching and rate limiting
 
 ---
 
@@ -446,5 +565,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
     </a>
     <img src="https://img.shields.io/badge/Made%20with-❤️-red?style=flat" alt="Made with Love">
     <img src="https://img.shields.io/badge/Open%20Source-✨-blue?style=flat" alt="Open Source">
+    <img src="https://img.shields.io/badge/Voice%20Enabled-🎤-purple?style=flat" alt="Voice Enabled">
   </p>
+  
+  <p><em>⭐ Star this repo if you find it useful!</em></p>
 </div>
