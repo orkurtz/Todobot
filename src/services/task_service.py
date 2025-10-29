@@ -103,9 +103,14 @@ class TaskService:
             pending_tasks = Task.query.filter_by(user_id=user_id, status='pending').count()
             completed_tasks = Task.query.filter_by(user_id=user_id, status='completed').count()
             
-            # Tasks due today
-            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            today_end = today_start + timedelta(days=1)
+            # Tasks due today - IN ISRAEL TIME
+            now_israel = datetime.now(self.israel_tz)  # Current time in Israel
+            today_start_israel = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)  # Midnight Israel
+            today_end_israel = today_start_israel + timedelta(days=1)  # Next midnight Israel
+            
+            # Convert to UTC for database comparison (Task.due_date is stored in UTC)
+            today_start = today_start_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+            today_end = today_end_israel.astimezone(pytz.UTC).replace(tzinfo=None)
             
             due_today = Task.query.filter(
                 Task.user_id == user_id,
