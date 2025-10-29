@@ -124,9 +124,9 @@ class WhatsAppService:
         """Send welcome message with quick action buttons"""
         welcome_text = self._get_welcome_message()
         buttons = [
-            {"id": "help", "title": "📋 Help"},
-            {"id": "tasks", "title": "✅ My Tasks"},
-            {"id": "stats", "title": "📊 Stats"}
+            {"id": "help", "title": "📋 עזרה"},
+            {"id": "tasks", "title": "✅ המשימות שלי"},
+            {"id": "stats", "title": "📊 סטטיסטיקה"}
         ]
         
         return self.send_interactive_message(to, welcome_text, buttons)
@@ -134,11 +134,11 @@ class WhatsAppService:
     def _get_welcome_message(self) -> str:
         """Get welcome message text"""
         messages = [
-            "👋 Welcome to your AI-powered Todo Assistant!\n\nI can help you:\n• Create and manage tasks\n• Set reminders\n• Track your productivity\n• Answer questions\n\nJust send me a message and I'll help organize your tasks!",
+            "👋 ברוכים הבאים לעוזר המשימות החכם שלך!\n\nאני יכול לעזור לך:\n• ליצור ולנהל משימות\n• להגדיר תזכורות\n• לעקוב אחר הפרודוקטיביות שלך\n• לענות על שאלות\n\nפשוט שלח לי הודעה ואני אעזור לארגן את המשימות שלך!",
             
-            "🤖 Hello! I'm your personal task manager.\n\n✨ What I can do:\n• Extract tasks from your messages\n• Set due dates and reminders\n• Track your progress\n• Answer questions\n\nTry telling me about something you need to do!",
+            "🤖 שלום! אני מנהל המשימות האישי שלך.\n\n✨ מה אני יכול לעשות:\n• לחלץ משימות מההודעות שלך\n• להגדיר תאריכי יעד ותזכורות\n• לעקוב אחר ההתקדמות שלך\n• לענות על שאלות\n\nנסה לספר לי על משהו שאתה צריך לעשות!",
             
-            "🎯 Hi there! Ready to get organized?\n\nI'll help you:\n📝 Turn messages into actionable tasks\n⏰ Never miss a deadline\n📊 Track your productivity\n💬 Answer your questions\n\nWhat would you like to accomplish today?"
+            "🎯 היי! מוכן להתארגן?\n\nאני אעזור לך:\n📝 להפוך הודעות למשימות ברורות\n⏰ לא לפספס דדליינים\n📊 לעקוב אחר הפרודוקטיביות\n💬 לענות על שאלותיך\n\nמה תרצה להשיג היום?"
         ]
         return random.choice(messages)
     

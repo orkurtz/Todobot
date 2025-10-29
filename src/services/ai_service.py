@@ -132,12 +132,12 @@ Message to analyze: {message}"""
         # Check rate limiting
         allowed, error_msg = self.rate_limiter.is_allowed()
         if not allowed:
-            return f"⚠️ AI service temporarily unavailable: {error_msg}"
+            return f"⚠️ שירות ה-AI אינו זמין זמנית: {error_msg}"
         
         # Check circuit breaker
         available, status_msg = self.circuit_breaker.is_available()
         if not available:
-            return f"⚠️ AI service temporarily unavailable: {status_msg}"
+            return f"⚠️ שירות ה-AI אינו זמין זמנית: {status_msg}"
         
         try:
             # Build conversation context
@@ -165,7 +165,7 @@ Message to analyze: {message}"""
         except Exception as e:
             print(f"❌ Gemini API error: {e}")
             self.circuit_breaker.record_failure(e)
-            return "Sorry, I'm having trouble processing your request right now. Please try again in a moment."
+            return "מצטער, אני מתקשה לעבד את הבקשה שלך כרגע. אנא נסה שוב בעוד רגע."
     
     # ======================================================================
     # === THIS IS THE UPDATED FUNCTION WITH THE SIMPLE, EFFECTIVE FIX ===

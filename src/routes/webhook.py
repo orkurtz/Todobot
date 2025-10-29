@@ -148,7 +148,7 @@ def process_incoming_message(message, value):
         if not InputValidator.validate_user_rate_limit(user.id):
             whatsapp_service.send_message(
                 from_number,
-                "⚠️ You're sending messages too quickly. Please wait a moment before sending another message."
+                "⚠️ אתה שולח הודעות מהר מדי. חכה רגע לפני שליחת הודעה נוספת."
             )
             return
         
@@ -165,7 +165,7 @@ def process_incoming_message(message, value):
             # Handle unsupported message types
             whatsapp_service.send_message(
                 from_number,
-                f"🤖 I received your {message_type} message, but I can only process text and voice messages right now. Please send me a text message!"
+                f"🤖 קיבלתי את הודעת ה-{message_type} שלך, אבל אני יכול לעבד רק הודעות טקסט וקול כרגע. אנא שלח לי הודעת טקסט!"
             )
             
     except Exception as e:
@@ -182,7 +182,7 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         if not sanitized_text:
             whatsapp_service.send_message(
                 from_number,
-                "⚠️ Your message contains invalid content. Please send a different message."
+                "⚠️ ההודעה שלך מכילה תוכן לא חוקי. אנא שלח הודעה אחרת."
             )
             return
         
@@ -234,7 +234,7 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         print(f"❌ Error processing text message: {e}")
         whatsapp_service.send_message(
             user.phone_number,
-            "🤖 Sorry, I'm having trouble processing your message right now. Please try again in a moment."
+            "🤖 מצטער, אני מתקשה לעבד את ההודעה שלך כרגע. אנא נסה שוב בעוד רגע."
         )
 
 def process_voice_message(message, user, whatsapp_service, ai_service):
@@ -378,26 +378,26 @@ def handle_basic_commands(user_id, text):
     
     # Help command
     if text_lower in ['help', '/help', '?', 'עזרה']:
-        return """🤖 WhatsApp Todo Bot Help
+        return """🤖 עזרה - בוט המשימות בוואטסאפ
 
-📝 **Task Management:**
-• Just tell me what you need to do and I'll create tasks
-• Say "my tasks" to see pending tasks  
-• Say "stats" for your productivity stats
-• React with 👍 to mark tasks as done
+📝 **ניהול משימות:**
+• פשוט ספר לי מה אתה צריך לעשות ואני אצור משימות
+• כתוב "המשימות שלי" כדי לראות משימות ממתינות
+• כתוב "סטטיסטיקה" לנתוני ביצועים שלך
+• הגב עם 👍 כדי לסמן משימות כהושלמו
 
-📅 **Due Dates:**
-• "Call mom tomorrow at 3pm"
-• "Meeting on Sunday at 10am" 
-• "Buy groceries today"
+📅 **תאריכי יעד:**
+• "להתקשר לאמא מחר ב-15:00"
+• "פגישה ביום ראשון ב-10:00" 
+• "לקנות מצרכים היום"
 
-💬 **Languages:** I support Hebrew, English, Arabic and more!
+💬 **שפות:** אני תומך בעברית, אנגלית, ערבית ועוד!
 
-🔧 **Commands:**
-• help - Show this help
-• tasks - List pending tasks
-• stats - Show statistics
-• completed - Show completed tasks"""
+🔧 **פקודות:**
+• עזרה - הצג עזרה זו
+• משימות - הצג רשימת משימות
+• סטטיסטיקה - הצג נתונים
+• הושלמו - הצג משימות שהושלמו"""
     
     # Task list commands
     elif text_lower in ['tasks', 'my tasks', 'list', '/tasks', 'המשימות שלי', 'רשימה']:
@@ -417,37 +417,37 @@ def handle_task_list_command(user_id):
         tasks = task_service.get_user_tasks(user_id, status='pending', limit=20)
         
         if not tasks:
-            return "📋 You don't have any pending tasks! Send me a message about something you need to do."
+            return "📋 אין לך משימות ממתינות! שלח לי הודעה על משהו שאתה צריך לעשות."
         
-        response = f"📋 **Your Pending Tasks ({len(tasks)}):**\n\n"
+        response = f"📋 **המשימות הממתינות שלך ({len(tasks)}):**\n\n"
         response += task_service.format_task_list(tasks)
-        response += "\n\n💡 React with 👍 to any task message to mark it as completed!"
+        response += "\n\n💡 הגב עם 👍 לכל הודעת משימה כדי לסמן כהושלמה!"
         
         return response
         
     except Exception as e:
         print(f"❌ Error getting task list: {e}")
-        return "❌ Error retrieving your tasks. Please try again."
+        return "❌ שגיאה בשליפת המשימות. נסה שוב."
 
 def handle_stats_command(user_id):
     """Handle stats command"""
     try:
         stats = task_service.get_task_stats(user_id)
         
-        return f"""📊 **Your Productivity Stats:**
+        return f"""📊 **הסטטיסטיקות שלך:**
 
-📝 Total Tasks: {stats['total']}
-⏳ Pending: {stats['pending']}
-✅ Completed: {stats['completed']}
-📅 Due Today: {stats['due_today']}
-⚠️ Overdue: {stats['overdue']}
-🎯 Completion Rate: {stats['completion_rate']}%
+📝 סה"כ משימות: {stats['total']}
+⏳ ממתינות: {stats['pending']}
+✅ הושלמו: {stats['completed']}
+📅 יעד להיום: {stats['due_today']}
+⚠️ באיחור: {stats['overdue']}
+🎯 אחוז השלמה: {stats['completion_rate']}%
 
-Keep up the great work! 🚀"""
+המשך כך! עבודה מצוינת! 🚀"""
         
     except Exception as e:
         print(f"❌ Error getting stats: {e}")
-        return "❌ Error retrieving your statistics. Please try again."
+        return "❌ שגיאה בשליפת הסטטיסטיקה. נסה שוב."
 
 def handle_completed_tasks_command(user_id):
     """Handle completed tasks command"""
@@ -455,17 +455,17 @@ def handle_completed_tasks_command(user_id):
         tasks = task_service.get_user_tasks(user_id, status='completed', limit=10)
         
         if not tasks:
-            return "✅ You haven't completed any tasks yet. Keep working on your pending tasks!"
+            return "✅ עדיין לא השלמת משימות. המשך לעבוד על המשימות הממתינות!"
         
-        response = f"✅ **Your Recently Completed Tasks ({len(tasks)}):**\n\n"
+        response = f"✅ **המשימות האחרונות שהושלמו ({len(tasks)}):**\n\n"
         response += task_service.format_task_list(tasks, show_due_date=False)
-        response += f"\n\n🎉 Great job completing {len(tasks)} tasks!"
+        response += f"\n\n🎉 עבודה מצוינת! השלמת {len(tasks)} משימות!"
         
         return response
         
     except Exception as e:
         print(f"❌ Error getting completed tasks: {e}")
-        return "❌ Error retrieving your completed tasks. Please try again."
+        return "❌ שגיאה בשליפת המשימות שהושלמו. נסה שוב."
 
 def handle_button_click(user_id, button_id):
     """Handle button click"""
@@ -476,4 +476,4 @@ def handle_button_click(user_id, button_id):
     elif button_id == 'stats':
         return handle_stats_command(user_id)
     else:
-        return "🤖 Button clicked! How can I help you today?"
+        return "🤖 איך אוכל לעזור לך היום?"
