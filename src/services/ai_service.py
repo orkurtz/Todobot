@@ -80,11 +80,12 @@ Remember: You're helping busy people stay organized while maintaining natural co
 Instructions:
 1. Determine the user's primary intent: 'add', 'complete', 'delete', 'update', 'reschedule', or 'query'
 2. For 'add': Extract the task description and due date/time
-3. For 'complete' or 'delete': Extract task identifier (number or keywords)
-4. For 'update': Extract task identifier AND new description (and optionally new date)
-5. For 'reschedule': Extract task identifier AND new due date/time
-6. Support natural language dates in Hebrew and English
+3. For 'complete' or 'delete': Extract task identifier (number or keywords) - ALWAYS set task_id field!
+4. For 'update': Extract task identifier AND new description (and optionally new date) - ALWAYS set task_id field!
+5. For 'reschedule': Extract task identifier AND new due date/time - ALWAYS set task_id field!
+6. Support natural language dates in Hebrew and English, including relative times like "בעוד X דקות/שעות" and "in X minutes/hours"
 7. Do not create tasks for casual conversation, questions without action, past completed actions, or vague statements.
+8. CRITICAL: When user mentions a task number (like "משימה 2", "task 3", just "2", etc), ALWAYS include "task_id": "NUMBER" in the JSON!
 
 Actions:
 - 'add': Create new task
@@ -109,20 +110,41 @@ Respond with JSON only:
 ]}}
 
 Examples:
-Hebrew:
+Hebrew - Reschedule (דחייה/הקדמה):
 - "העבר משימה 2 למחר" → {{"tasks": [{{"action": "reschedule", "task_id": "2", "due_date": "מחר"}}]}}
-- "שנה משימה 3 להתקשר לרופא" → {{"tasks": [{{"action": "update", "task_id": "3", "new_description": "התקשר לרופא"}}]}}
 - "דחה משימה 1 ביומיים" → {{"tasks": [{{"action": "reschedule", "task_id": "1", "due_date": "מחרתיים"}}]}}
+- "דחה משימה 3 בשעתיים" → {{"tasks": [{{"action": "reschedule", "task_id": "3", "due_date": "בעוד שעתיים"}}]}}
+- "העבר משימה 5 בעוד 30 דקות" → {{"tasks": [{{"action": "reschedule", "task_id": "5", "due_date": "בעוד 30 דקות"}}]}}
+- "דחה 2 בעוד שבוע" → {{"tasks": [{{"action": "reschedule", "task_id": "2", "due_date": "בעוד שבוע"}}]}}
+
+Hebrew - Update (שינוי תיאור):
+- "שנה משימה 3 להתקשר לרופא" → {{"tasks": [{{"action": "update", "task_id": "3", "new_description": "התקשר לרופא"}}]}}
 - "עדכן משימה 5 קנה חלב מחר ב-10" → {{"tasks": [{{"action": "update", "task_id": "5", "new_description": "קנה חלב", "due_date": "מחר ב-10:00"}}]}}
+- "שנה 1 ללקנות לחם" → {{"tasks": [{{"action": "update", "task_id": "1", "new_description": "לקנות לחם"}}]}}
 
-English:
+Hebrew - Complete (השלמה):
+- "סיימתי משימה 2" → {{"tasks": [{{"action": "complete", "description": "2", "task_id": "2"}}]}}
+- "גמרתי את 3" → {{"tasks": [{{"action": "complete", "description": "3", "task_id": "3"}}]}}
+
+Hebrew - Add (יצירה):
+- "תזכיר לי לקנות חלב מחר בבוקר" → {{"tasks": [{{"action": "add", "description": "לקנות חלב", "due_date": "מחר בבוקר"}}]}}
+- "להתקשר לאמא בעוד שעה" → {{"tasks": [{{"action": "add", "description": "להתקשר לאמא", "due_date": "בעוד שעה"}}]}}
+
+English - Reschedule:
 - "Move task 2 to tomorrow" → {{"tasks": [{{"action": "reschedule", "task_id": "2", "due_date": "tomorrow"}}]}}
-- "Change task 3 to call dentist" → {{"tasks": [{{"action": "update", "task_id": "3", "new_description": "call dentist"}}]}}
 - "Postpone task 1 by 2 days" → {{"tasks": [{{"action": "reschedule", "task_id": "1", "due_date": "in 2 days"}}]}}
+- "Reschedule task 3 in 2 hours" → {{"tasks": [{{"action": "reschedule", "task_id": "3", "due_date": "in 2 hours"}}]}}
+- "Delay 5 by 30 minutes" → {{"tasks": [{{"action": "reschedule", "task_id": "5", "due_date": "in 30 minutes"}}]}}
 
-Previous examples still valid:
-- "Done with task 2" → {{"tasks": [{{"action": "complete", "description": "2"}}]}}
-- "Remind me to buy milk tomorrow morning" → {{"tasks": [{{"action": "add", "description": "buy milk", "due_date": "tomorrow morning"}}]}}
+English - Update:
+- "Change task 3 to call dentist" → {{"tasks": [{{"action": "update", "task_id": "3", "new_description": "call dentist"}}]}}
+- "Update task 2 buy bread tomorrow" → {{"tasks": [{{"action": "update", "task_id": "2", "new_description": "buy bread", "due_date": "tomorrow"}}]}}
+
+English - Complete:
+- "Done with task 2" → {{"tasks": [{{"action": "complete", "description": "2", "task_id": "2"}}]}}
+- "Finished 3" → {{"tasks": [{{"action": "complete", "description": "3", "task_id": "3"}}]}}
+
+Important: Always include "task_id" field when user mentions a specific task number!
 
 Message to analyze: {message}"""
         }
