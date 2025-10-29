@@ -142,13 +142,84 @@ class TaskService:
             }
     
     def parse_date_from_text(self, text: str, user_timezone: str = 'Asia/Jerusalem') -> Optional[datetime]:
-        """Parse date/time from natural language text"""
+        """Parse date/time from natural language text with support for relative time expressions"""
         if not text:
             return None
         
         text = text.lower().strip()
         tz = pytz.timezone(user_timezone)
         now = datetime.now(tz)
+        
+        # Handle relative time expressions in Hebrew
+        # Pattern: "בעוד X דקות/שעות/ימים" or "עוד X דקות/שעות/ימים"
+        hebrew_relative_patterns = [
+            (r'(?:בעוד|עוד)\s+(\d+)\s*(?:דקות?|דקה)', 'minutes'),
+            (r'(?:בעוד|עוד)\s+חצי\s+שעה', 'half_hour'),
+            (r'(?:בעוד|עוד)\s+(\d+)\s*(?:שעות?|שעה)', 'hours'),
+            (r'(?:בעוד|עוד)\s+(\d+)\s*(?:ימים?|יום)', 'days'),
+            (r'(?:בעוד|עוד)\s+(?:שבוע|שבועיים)', 'week'),
+            (r'(?:בעוד|עוד)\s+חודש', 'month'),
+        ]
+        
+        for pattern, unit in hebrew_relative_patterns:
+            match = re.search(pattern, text)
+            if match:
+                if unit == 'minutes':
+                    minutes = int(match.group(1))
+                    target_date = now + timedelta(minutes=minutes)
+                elif unit == 'half_hour':
+                    target_date = now + timedelta(minutes=30)
+                elif unit == 'hours':
+                    hours = int(match.group(1))
+                    target_date = now + timedelta(hours=hours)
+                elif unit == 'days':
+                    days = int(match.group(1))
+                    target_date = now + timedelta(days=days)
+                elif unit == 'week':
+                    if 'שבועיים' in text:
+                        target_date = now + timedelta(weeks=2)
+                    else:
+                        target_date = now + timedelta(weeks=1)
+                elif unit == 'month':
+                    target_date = now + timedelta(days=30)
+                
+                return target_date.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        # Handle relative time expressions in English
+        # Pattern: "in X minutes/hours/days"
+        english_relative_patterns = [
+            (r'in\s+(\d+)\s*(?:minutes?|mins?)', 'minutes'),
+            (r'in\s+(?:a\s+)?half\s+(?:an\s+)?hour', 'half_hour'),
+            (r'in\s+(\d+)\s*(?:hours?|hrs?)', 'hours'),
+            (r'in\s+(\d+)\s*(?:days?)', 'days'),
+            (r'in\s+(?:a\s+)?week', 'week'),
+            (r'in\s+(\d+)\s*(?:weeks?)', 'weeks'),
+            (r'in\s+(?:a\s+)?month', 'month'),
+        ]
+        
+        for pattern, unit in english_relative_patterns:
+            match = re.search(pattern, text)
+            if match:
+                if unit == 'minutes':
+                    minutes = int(match.group(1))
+                    target_date = now + timedelta(minutes=minutes)
+                elif unit == 'half_hour':
+                    target_date = now + timedelta(minutes=30)
+                elif unit == 'hours':
+                    hours = int(match.group(1))
+                    target_date = now + timedelta(hours=hours)
+                elif unit == 'days':
+                    days = int(match.group(1))
+                    target_date = now + timedelta(days=days)
+                elif unit == 'week':
+                    target_date = now + timedelta(weeks=1)
+                elif unit == 'weeks':
+                    weeks = int(match.group(1))
+                    target_date = now + timedelta(weeks=weeks)
+                elif unit == 'month':
+                    target_date = now + timedelta(days=30)
+                
+                return target_date.astimezone(pytz.UTC).replace(tzinfo=None)
         
         # Handle Hebrew date expressions
         hebrew_mappings = {
