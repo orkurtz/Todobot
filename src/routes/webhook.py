@@ -511,7 +511,7 @@ def handle_task_list_separate(user_id):
         # Send header
         whatsapp_service.send_message(
             user.phone_number,
-            f"📋 המשימות שלך ({len(tasks)}):\n💡 הגב עם 👍 על כל משימה להשלים אותה"
+            f"📋 המשימות שלך ({len(tasks)}):"
         )
         
         # Send each task separately
@@ -534,7 +534,7 @@ def handle_task_list_separate(user_id):
                     if msg_id:
                         save_task_message_mapping(user_id, msg_id, task.id)
         
-        return None
+        return "לסיום משימה הגב עליה עם האימוגי  👍 "
         
     except Exception as e:
         print(f"❌ Error: {e}")
