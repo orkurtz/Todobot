@@ -659,3 +659,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
   
   <p><em>⭐ Star this repo if you find it useful!</em></p>
 </div>
+
+## Recurring Tasks Notes
+
+- pattern.due_date: The recurring pattern's due_date stores the anchor for the NEXT occurrence (including HH:MM). After an instance is generated at midnight, the pattern's due_date advances to the next scheduled date/time. This preserves the time-of-day for all future instances and allows the midnight job to determine when to create the next instance.
+
+- Scheduler enable/disable: Set `SCHEDULER_ENABLED=1` only in the worker process (and `0` in the web app) to avoid duplicate reminders and duplicate instance creation. The scheduler reads this env var at startup.
+
+- Duplicate instance guard: The database uses a unique index on (`parent_recurring_id`, `due_date`) to prevent accidental duplicate instance creation.

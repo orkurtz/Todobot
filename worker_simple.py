@@ -12,11 +12,18 @@ import logging
 import threading
 from datetime import datetime
 
-# Set environment variable to identify this as worker process
-os.environ['PROCESS_TYPE'] = 'worker'
+# Set process role in code (no env)
+try:
+    from src import app as app_module
+    app_module.PROCESS_ROLE = 'worker'
+except Exception:
+    # Fallback for top-level app import path
+    import app as app_module
+    app_module.PROCESS_ROLE = 'worker'
 
-# Import after setting environment variable
-from app import app
+# Create app after setting role
+from src.app import create_app
+app = create_app()
 
 # Configure logging
 logging.basicConfig(

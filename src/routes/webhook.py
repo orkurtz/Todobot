@@ -602,7 +602,7 @@ def handle_stats_command(user_id):
 def handle_completed_tasks_command(user_id):
     """Handle completed tasks command"""
     try:
-        tasks = task_service.get_user_tasks(user_id, status='completed', limit=10)
+        tasks = task_service.get_user_tasks(user_id, status='completed', limit=10, include_patterns_when_completed=True)
         
         if not tasks:
             return "✅ עדיין לא השלמת משימות. המשך לעבוד על המשימות הממתינות!"
@@ -625,10 +625,13 @@ def handle_recurring_patterns_command(user_id):
         if not patterns:
             return "📋 אין לך משימות חוזרות פעילות"
         
-        response = f"🔄 **המשימות החוזרות שלך ({len(patterns)}):**\n\n"
+        response = f"🔄 **המשימות החוזרות שלך ({len(patterns)}):**\n\n(הזמן בתבנית = המופע הבא)\n\n"
         for i, pattern in enumerate(patterns, 1):
             pattern_desc = task_service._format_recurrence_pattern(pattern)
             response += f"{i}. {pattern.description} - {pattern_desc} [#{pattern.id}]\n"
+            if pattern.due_date:
+                lt = pattern.due_date.replace(tzinfo=pytz.UTC).astimezone(task_service.israel_tz)
+                response += f"   שעה: {lt.strftime('%H:%M')}\n"
             response += f"   נוצרו {pattern.recurring_instance_count} מופעים\n"
         
         response += "\n💡 **לניהול:**"

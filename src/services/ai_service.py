@@ -396,16 +396,20 @@ Listen to this audio message and:
 Current date for reference: {current_date}
 User timezone: Asia/Jerusalem (Israel)
 
-Return JSON in this exact format:
+Return JSON in this exact format (if a time is spoken, include due_date with HH:MM; support recurring fields when present):
 {{
     "transcription": "the transcribed text here",
     "tasks": [
         {{
             "action": "add" | "complete" | "delete" | "update" | "reschedule" | "query",
             "description": "task description",
-            "due_date": "natural language date like 'מחר', 'tomorrow', 'יום שלישי'" or null,
+            "due_date": "natural language date like 'מחר', 'tomorrow', 'יום שלישי' (use HH:MM if time spoken)" or null,
             "task_id": task number if mentioned or null,
-            "new_description": "new description for update action" or null
+            "new_description": "new description for update action" or null,
+            "recurrence_pattern": "daily" | "weekly" | "specific_days" | "interval" | null,
+            "recurrence_interval": number or null,
+            "recurrence_days_of_week": ["monday", "wednesday"] or null,
+            "recurrence_end_date": date string or null
         }}
     ]
 }}
@@ -421,6 +425,12 @@ English audio "remind me to call mom tomorrow at 3pm" →
 {{
     "transcription": "remind me to call mom tomorrow at 3pm",
     "tasks": [{{"action": "add", "description": "call mom", "due_date": "tomorrow at 15:00"}}]
+}}
+
+Hebrew audio "תזכיר לי כל יום ב-9 לקחת ויטמינים" →
+{{
+    "transcription": "תזכיר לי כל יום ב-9 לקחת ויטמינים",
+    "tasks": [{{"action": "add", "description": "לקחת ויטמינים", "due_date": "היום ב-09:00", "recurrence_pattern": "daily", "recurrence_interval": 1}}]
 }}
 
 Hebrew audio "סיימתי את משימה 2" →
@@ -494,6 +504,10 @@ Always include the transcription for transparency.
                                 'status': task.get('status', 'pending'),
                                 'task_id': task.get('task_id'),
                                 'new_description': task.get('new_description'),
+                                'recurrence_pattern': task.get('recurrence_pattern'),
+                                'recurrence_interval': task.get('recurrence_interval'),
+                                'recurrence_days_of_week': task.get('recurrence_days_of_week'),
+                                'recurrence_end_date': task.get('recurrence_end_date'),
                                 'transcription': transcription  # Include transcription
                             })
                     

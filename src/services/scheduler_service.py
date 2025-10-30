@@ -27,6 +27,16 @@ class SchedulerService:
 
     def initialize_scheduler(self, app):
         """Initialize and start the scheduler"""
+        # Only start scheduler in worker role (code-based guard)
+        try:
+            from ..app import PROCESS_ROLE
+            if PROCESS_ROLE != 'worker':
+                print("Scheduler skipped: running in web process")
+                return True
+        except Exception:
+            # If role cannot be determined, skip to be safe in web
+            print("Scheduler skipped: role unknown")
+            return True
         if self.scheduler and hasattr(self.scheduler, 'running') and self.scheduler.running:
             print("Scheduler is already running - skipping initialization")
             return True

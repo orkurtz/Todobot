@@ -14,6 +14,9 @@ from .services.task_service import TaskService
 from .services.scheduler_service import SchedulerService
 from .services.monitoring_service import MonitoringService
 
+# Process role: 'web' by default; worker process will override this value in code
+PROCESS_ROLE = 'web'
+
 # Global service instances
 ai_service = None
 whatsapp_service = None  
@@ -55,9 +58,8 @@ def create_app(config_name=None):
             alert_phone_numbers=app.config.get('ADMIN_PHONE_NUMBERS', ["+972546617043"])
         )
         
-        # Initialize scheduler service (only in worker processes)
-        process_type = os.getenv('PROCESS_TYPE', '').lower()
-        if process_type == 'worker':
+        # Initialize scheduler service (only in worker process role)
+        if PROCESS_ROLE == 'worker':
             scheduler_service = SchedulerService(
                 redis_client=redis_client, 
                 whatsapp_service=whatsapp_service

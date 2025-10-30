@@ -37,17 +37,22 @@ class TaskService:
             db.session.rollback()
             raise e
     
-    def get_user_tasks(self, user_id: int, status: str = 'pending', limit: int = 50) -> List[Task]:
-        """Get user's tasks by status (exclude recurring patterns)."""
+    def get_user_tasks(self, user_id: int, status: str = 'pending', limit: int = 50,
+                       include_patterns_when_completed: bool = False) -> List[Task]:
+        """Get user's tasks by status (exclude recurring patterns unless requested for completed)."""
         try:
-            tasks = Task.query.filter(
+            base_query = Task.query.filter(
                 Task.user_id == user_id,
-                Task.status == status,
-                Task.is_recurring == False  # show only instances or non-recurring tasks
-            ).order_by(Task.due_date.asc().nullslast(), Task.created_at.desc()).limit(limit).all()
-            
+                Task.status == status
+            )
+            if status == 'completed' and include_patterns_when_completed:
+                tasks = base_query.order_by(Task.updated_at.desc()).limit(limit).all()
+            else:
+                tasks = base_query.filter(Task.is_recurring == False).order_by(
+                    Task.due_date.asc().nullslast(), Task.created_at.desc()
+                ).limit(limit).all()
             return tasks
-            
+        
         except Exception as e:
             print(f"❌ Failed to get user tasks: {e}")
             return []
@@ -1043,6 +1048,7 @@ class TaskService:
     def generate_next_instance(self, pattern_task: Task) -> Optional[Task]:
         """Generate the next instance of a recurring task"""
         import json
+        from sqlalchemy.exc import IntegrityError
         
         if not pattern_task.is_recurring or pattern_task.status != 'pending':
             return None
@@ -1088,7 +1094,16 @@ class TaskService:
         pattern_task.recurring_instance_count += 1
         pattern_task.due_date = next_due_date  # Update pattern's due_date to next occurrence
         
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            print(f"⚠️ Duplicate prevented for pattern {pattern_task.id} at {next_due_date}")
+            existing = Task.query.filter(
+                Task.parent_recurring_id == pattern_task.id,
+                Task.due_date == next_due_date
+            ).first()
+            return existing
         
         print(f"✅ Generated recurring instance {instance.id} from pattern {pattern_task.id}")
         return instance
