@@ -270,14 +270,27 @@ Message to analyze: {message}"""
                 # Validate and clean tasks - INCLUDING action field
                 valid_tasks = []
                 for task in tasks:
-                    if task.get('description') and len(task['description'].strip()) > 0:
+                    action = task.get('action', 'add')
+                    
+                    # For these actions, description is optional (task_id is used instead)
+                    if action in ['reschedule', 'complete', 'delete', 'update', 'query']:
                         valid_tasks.append({
-                            'action': task.get('action', 'add'),  # Include action field
+                            'action': action,
+                            'description': task.get('description', '').strip(),  # Can be empty for these actions
+                            'due_date': task.get('due_date'),
+                            'status': task.get('status', 'pending'),
+                            'task_id': task.get('task_id'),
+                            'new_description': task.get('new_description')
+                        })
+                    # For 'add' action, description is required
+                    elif action == 'add' and task.get('description') and len(task['description'].strip()) > 0:
+                        valid_tasks.append({
+                            'action': action,
                             'description': task['description'].strip(),
                             'due_date': task.get('due_date'),
-                            'status': task.get('status', 'pending'),  # Include status field
-                            'task_id': task.get('task_id'),  # Include task_id for update/reschedule/complete
-                            'new_description': task.get('new_description')  # Include new_description for updates
+                            'status': task.get('status', 'pending'),
+                            'task_id': task.get('task_id'),
+                            'new_description': task.get('new_description')
                         })
                 
                 print(f"✅ Validated {len(valid_tasks)} task(s) after filtering")
