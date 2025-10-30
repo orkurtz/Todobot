@@ -116,6 +116,12 @@ Hebrew - Reschedule (דחייה/הקדמה):
 - "דחה משימה 3 בשעתיים" → {{"tasks": [{{"action": "reschedule", "task_id": "3", "due_date": "בעוד שעתיים"}}]}}
 - "העבר משימה 5 בעוד 30 דקות" → {{"tasks": [{{"action": "reschedule", "task_id": "5", "due_date": "בעוד 30 דקות"}}]}}
 - "דחה 2 בעוד שבוע" → {{"tasks": [{{"action": "reschedule", "task_id": "2", "due_date": "בעוד שבוע"}}]}}
+- "דחה משימה 12 ל-31/10" → {{"tasks": [{{"action": "reschedule", "task_id": "12", "due_date": "31/10"}}]}}
+- "דחה ל-31/10 את משימה 12" → {{"tasks": [{{"action": "reschedule", "task_id": "12", "due_date": "31/10"}}]}}
+- "העבר משימה 5 לתאריך 15/12" → {{"tasks": [{{"action": "reschedule", "task_id": "5", "due_date": "15/12"}}]}}
+- "העבר ל-15/12 משימה 5" → {{"tasks": [{{"action": "reschedule", "task_id": "5", "due_date": "15/12"}}]}}
+- "דחה את 3 ל-5/11 בשעה 14:00" → {{"tasks": [{{"action": "reschedule", "task_id": "3", "due_date": "5/11 14:00"}}]}}
+- "את משימה 7 דחה ל-20/11" → {{"tasks": [{{"action": "reschedule", "task_id": "7", "due_date": "20/11"}}]}}
 
 Hebrew - Update (שינוי תיאור):
 - "שנה משימה 3 להתקשר לרופא" → {{"tasks": [{{"action": "update", "task_id": "3", "new_description": "התקשר לרופא"}}]}}

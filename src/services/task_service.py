@@ -281,9 +281,45 @@ class TaskService:
                 target_date = target_date.replace(hour=9, minute=0, second=0, microsecond=0)
                 return target_date.astimezone(pytz.UTC).replace(tzinfo=None)
         
-        # Try parsing explicit dates
+        # Handle DD/MM and DD/MM/YYYY formats (Israeli/European format)
+        # This MUST come before parser.parse() to avoid American MM/DD interpretation
+        date_formats_to_try = [
+            r'(\d{1,2})/(\d{1,2})/(\d{4})',  # DD/MM/YYYY
+            r'(\d{1,2})/(\d{1,2})',           # DD/MM
+        ]
+        
+        for pattern in date_formats_to_try:
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    if len(match.groups()) == 3:  # DD/MM/YYYY
+                        day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+                        target_date = tz.localize(datetime(year, month, day, 9, 0))
+                    else:  # DD/MM (assume current year)
+                        day, month = int(match.group(1)), int(match.group(2))
+                        year = now.year
+                        target_date = tz.localize(datetime(year, month, day, 9, 0))
+                        
+                        # If date is in the past, assume next year
+                        if target_date < now:
+                            target_date = tz.localize(datetime(year + 1, month, day, 9, 0))
+                    
+                    # Extract time if present (HH:MM format)
+                    time_match = re.search(r'(?:בשעה|ב-|at)?\s*(\d{1,2}):(\d{2})', text)
+                    if time_match:
+                        hour, minute = int(time_match.group(1)), int(time_match.group(2))
+                        target_date = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    
+                    print(f"✅ Parsed DD/MM date: {text} → {target_date}")
+                    return target_date.astimezone(pytz.UTC).replace(tzinfo=None)
+                    
+                except ValueError as e:
+                    print(f"⚠️ Invalid date format in '{text}': {e}")
+                    continue  # Try next pattern
+        
+        # Try parsing explicit dates with dayfirst=True for other formats
         try:
-            parsed_date = parser.parse(text, default=now)
+            parsed_date = parser.parse(text, dayfirst=True, default=now)
             if parsed_date.tzinfo is None:
                 parsed_date = tz.localize(parsed_date)
             return parsed_date.astimezone(pytz.UTC).replace(tzinfo=None)
@@ -755,8 +791,13 @@ class TaskService:
     def _handle_task_reschedule(self, user_id: int, task_data: Dict) -> Tuple[bool, str]:
         """Handle task reschedule action (change only due date) with natural language"""
         try:
+            print(f"🔥 DEBUG - _handle_task_reschedule called")
+            print(f"   task_data: {task_data}")
+            
             task_id_str = task_data.get('task_id') or task_data.get('description')
             new_due_date_str = task_data.get('due_date')
+            
+            print(f"   task_id_str: '{task_id_str}', new_due_date_str: '{new_due_date_str}'")
             
             if not task_id_str:
                 return False, "❌ אנא ציין איזו משימה לדחות (למשל: 'דחה משימה 2')"
@@ -767,23 +808,32 @@ class TaskService:
             # Parse task ID (same logic as update)
             if task_id_str.isdigit():
                 task_id = int(task_id_str)
+                print(f"   Searching for task with ID={task_id}")
                 
                 task = Task.query.filter_by(id=task_id, user_id=user_id, status='pending').first()
                 
                 if not task:
+                    print(f"   ⚠️ Task ID={task_id} not found in DB (or not pending)")
                     tasks = self.get_user_tasks(user_id, status='pending', limit=100)
+                    print(f"   Trying position-based: user has {len(tasks)} pending tasks")
                     if task_id < 1 or task_id > len(tasks):
-                        return False, f"❌ משימה #{task_id} לא נמצאה"
+                        print(f"   ❌ Position {task_id} out of range (1-{len(tasks)})")
+                        return False, f"❌ משימה #{task_id} לא נמצאה. יש לך {len(tasks)} משימות פתוחות."
                     task = tasks[task_id - 1]
                     task_id = task.id
+                    print(f"   ✅ Found task by position: position {task_id_str} → DB ID {task_id}")
+                else:
+                    print(f"   ✅ Found task by DB ID: {task_id}")
             else:
                 return False, "❌ אנא ציין מספר משימה"
             
             # Parse new due date - USE NATURAL LANGUAGE PARSER!
             new_due_date = self.parse_date_from_text(new_due_date_str)
+            print(f"   Parsed due_date from '{new_due_date_str}' → {new_due_date}")
             
             # If natural language fails, try standard formats
             if not new_due_date:
+                print(f"   ⚠️ Natural language parsing failed, trying standard formats")
                 try:
                     new_due_date = datetime.strptime(new_due_date_str, "%Y-%m-%d %H:%M")
                 except ValueError:
@@ -791,14 +841,19 @@ class TaskService:
                         new_due_date = datetime.strptime(new_due_date_str, "%Y-%m-%d")
                         new_due_date = new_due_date.replace(hour=9, minute=0)
                     except ValueError:
+                        print(f"   ❌ All date parsing methods failed!")
                         return False, f"❌ לא הצלחתי להבין מתי לדחות. נסה 'מחר', 'יום רביעי ב-15:00', או תאריך מדויק."
             
             # Update only the due date
+            print(f"   Calling update_task(task_id={task_id}, user_id={user_id}, new_due_date={new_due_date})")
             success, message = self.update_task(task_id, user_id, None, new_due_date)
+            print(f"   update_task returned: success={success}, message='{message}'")
             return success, message
             
         except Exception as e:
             print(f"❌ Error handling task reschedule: {e}")
+            import traceback
+            traceback.print_exc()
             return False, "❌ שגיאה בדחיית המשימה. נסה שוב."
     
     def _handle_query_action(self, user_id: int, description: str, task_data: Dict) -> Optional[str]:

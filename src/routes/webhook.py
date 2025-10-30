@@ -197,12 +197,21 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         ai_response = ai_service.get_response(user.id, sanitized_text)
         parsed_tasks = ai_service.parse_tasks(sanitized_text)
         
+        # Debug: Show what AI parsed
+        print(f"🔥 DEBUG - Parsed {len(parsed_tasks) if parsed_tasks else 0} tasks from text message")
+        if parsed_tasks:
+            for idx, task in enumerate(parsed_tasks):
+                print(f"   Task {idx+1}: action={task.get('action')}, task_id={task.get('task_id')}, description={task.get('description')}, due_date={task.get('due_date')}")
+        else:
+            print(f"   ⚠️ No tasks parsed! AI response was: {ai_response[:100]}")
+        
         # Execute parsed tasks
         task_summary = ""
         has_action = False
         
         if parsed_tasks:
             task_summary = task_service.execute_parsed_tasks(user.id, parsed_tasks, sanitized_text)
+            print(f"🔥 DEBUG - Execution result: {task_summary[:200] if task_summary else '(empty)'}")
             # Check if there's an action (not query)
             has_action = any(task.get('action') in ['complete', 'delete', 'add', 'update', 'reschedule'] for task in parsed_tasks)
         
@@ -210,12 +219,15 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         if has_action and task_summary:
             # For actions (complete/delete/add) - only show execution result
             full_response = task_summary
+            print(f"🔥 DEBUG - Sending execution result only")
         elif task_summary:
             # For queries - combine AI response with data
             full_response = f"{ai_response}\n\n{task_summary}"
+            print(f"🔥 DEBUG - Sending AI response + task summary")
         else:
             # No task operations - just AI response
             full_response = ai_response
+            print(f"🔥 DEBUG - ⚠️ Sending AI response only (no execution)!")
         
         # Send response
         whatsapp_service.send_message(from_number, full_response)
