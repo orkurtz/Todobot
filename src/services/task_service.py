@@ -38,11 +38,12 @@ class TaskService:
             raise e
     
     def get_user_tasks(self, user_id: int, status: str = 'pending', limit: int = 50) -> List[Task]:
-        """Get user's tasks by status"""
+        """Get user's tasks by status (exclude recurring patterns)."""
         try:
-            tasks = Task.query.filter_by(
-                user_id=user_id,
-                status=status
+            tasks = Task.query.filter(
+                Task.user_id == user_id,
+                Task.status == status,
+                Task.is_recurring == False  # show only instances or non-recurring tasks
             ).order_by(Task.due_date.asc().nullslast(), Task.created_at.desc()).limit(limit).all()
             
             return tasks
@@ -414,7 +415,16 @@ class TaskService:
         
         formatted_tasks = []
         for i, task in enumerate(tasks, 1):
-            task_text = f"{i}. {task.description} [#{task.id}]"
+            # Add recurring indicator
+            if task.parent_recurring_id:
+                pattern = task.get_recurring_pattern()
+                if pattern:
+                    pattern_desc = self._format_recurrence_pattern(pattern)
+                    task_text = f"{i}. 🔄 {task.description} [#{task.id}] ({pattern_desc})"
+                else:
+                    task_text = f"{i}. 🔄 {task.description} [#{task.id}]"
+            else:
+                task_text = f"{i}. {task.description} [#{task.id}]"
             
             if show_due_date and task.due_date:
                 # Convert UTC to Israel timezone for display
@@ -492,12 +502,45 @@ class TaskService:
                                 except ValueError:
                                     print(f"⚠️ Could not parse due date: '{due_date_str}'")
                     
-                    task = self.create_task(user_id, description, due_date)
+                    # NEW: Check for recurrence
+                    recurrence_pattern = task_data.get('recurrence_pattern')
+                    
+                    if recurrence_pattern:
+                        recurrence_interval = task_data.get('recurrence_interval', 1)
+                        recurrence_days_of_week = task_data.get('recurrence_days_of_week')
+                        recurrence_end_date_str = task_data.get('recurrence_end_date')
+                        
+                        # Parse end date if provided
+                        recurrence_end_date = None
+                        if recurrence_end_date_str:
+                            recurrence_end_date = self.parse_date_from_text(recurrence_end_date_str)
+                        
+                        task = self.create_recurring_task(
+                            user_id,
+                            description,
+                            due_date,
+                            recurrence_pattern,
+                            recurrence_interval,
+                            recurrence_days_of_week,
+                            recurrence_end_date
+                        )
+                    else:
+                        # Existing non-recurring creation
+                        task = self.create_task(user_id, description, due_date)
+                    
                     created_tasks.append(task)
                 
                 elif action == 'update':
-                    # Handle task update
-                    success, message = self._handle_task_update(user_id, task_data)
+                    # Handle task update - support recurring pattern updates
+                    task_id_str = task_data.get('task_id') or task_data.get('description')
+                    if task_id_str and task_id_str.isdigit():
+                        target_task = Task.query.filter_by(id=int(task_id_str), user_id=user_id).first()
+                        if target_task and target_task.is_recurring:
+                            success, message = self.update_recurring_pattern(int(task_id_str), user_id, task_data)
+                        else:
+                            success, message = self._handle_task_update(user_id, task_data)
+                    else:
+                        success, message = self._handle_task_update(user_id, task_data)
                     if success:
                         completed_tasks.append(message)  # Use completed_tasks list for updates
                     else:
@@ -518,6 +561,29 @@ class TaskService:
                     if query_result:
                         query_results.append(query_result)
                 
+                elif action == 'stop_series':
+                    task_id_str = task_data.get('task_id') or task_data.get('description')
+                    if task_id_str and task_id_str.isdigit():
+                        task_id = int(task_id_str)
+                        # Check if message contains delete indicators
+                        delete_instances = ('מחק' in (original_message or '').lower() or 
+                                          'delete' in (original_message or '').lower())
+                        success, message = self.stop_recurring_series(task_id, user_id, delete_instances)
+                        if success:
+                            completed_tasks.append(message)
+                        else:
+                            failed_tasks.append(message)
+                
+                elif action == 'complete_series':
+                    task_id_str = task_data.get('task_id') or task_data.get('description')
+                    if task_id_str and task_id_str.isdigit():
+                        task_id = int(task_id_str)
+                        success, message = self.complete_recurring_series(task_id, user_id)
+                        if success:
+                            completed_tasks.append(message)
+                        else:
+                            failed_tasks.append(message)
+                
             except Exception as e:
                 print(f"❌ Failed to process task: {e}")
                 failed_tasks.append(task_data.get('description', 'Unknown task'))
@@ -528,7 +594,12 @@ class TaskService:
         if created_tasks:
             task_summaries = []
             for task in created_tasks:
-                summary = f"✅ {task.description}"
+                if task.is_recurring:
+                    pattern_text = self._format_recurrence_pattern(task)
+                    summary = f"✅ {task.description} 🔄 ({pattern_text})"
+                else:
+                    summary = f"✅ {task.description}"
+                
                 if task.due_date:
                     local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
                     summary += f" (יעד: {local_time.strftime('%d/%m %H:%M')})"
@@ -933,3 +1004,356 @@ class TaskService:
         except Exception as e:
             print(f"❌ Error handling query: {e}")
             return None
+    
+    # ========== RECURRING TASK METHODS ==========
+    
+    def create_recurring_task(self, user_id: int, description: str, due_date: datetime,
+                             recurrence_pattern: str, recurrence_interval: int = 1,
+                             recurrence_days_of_week: List[str] = None,
+                             recurrence_end_date: datetime = None) -> Task:
+        """Create a recurring task pattern"""
+        import json
+        
+        # Validate pattern
+        valid_patterns = ['daily', 'weekly', 'specific_days', 'interval']
+        if recurrence_pattern not in valid_patterns:
+            raise ValueError(f"Invalid recurrence pattern: {recurrence_pattern}")
+        
+        # Create pattern task
+        task = Task(
+            user_id=user_id,
+            description=description.strip()[:500],
+            due_date=due_date,
+            status='pending',
+            is_recurring=True,
+            recurrence_pattern=recurrence_pattern,
+            recurrence_interval=recurrence_interval,
+            recurrence_days_of_week=json.dumps(recurrence_days_of_week) if recurrence_days_of_week else None,
+            recurrence_end_date=recurrence_end_date,
+            recurring_instance_count=0,
+            recurring_max_instances=100
+        )
+        
+        db.session.add(task)
+        db.session.commit()
+        
+        print(f"✅ Created recurring task pattern for user {user_id}: {description[:50]}...")
+        return task
+    
+    def generate_next_instance(self, pattern_task: Task) -> Optional[Task]:
+        """Generate the next instance of a recurring task"""
+        import json
+        
+        if not pattern_task.is_recurring or pattern_task.status != 'pending':
+            return None
+        
+        # Check instance limit
+        if pattern_task.recurring_instance_count >= pattern_task.recurring_max_instances:
+            print(f"⚠️ Max instances ({pattern_task.recurring_max_instances}) reached for pattern {pattern_task.id}")
+            return None
+        
+        # Check end date
+        if pattern_task.recurrence_end_date and datetime.utcnow() > pattern_task.recurrence_end_date:
+            print(f"⚠️ Recurrence end date reached for pattern {pattern_task.id}")
+            return None
+        
+        # Calculate next due date
+        next_due_date = self._calculate_next_due_date(pattern_task)
+        if not next_due_date:
+            return None
+        
+        # Check if instance already exists for this date
+        existing = Task.query.filter(
+            Task.parent_recurring_id == pattern_task.id,
+            Task.due_date == next_due_date
+        ).first()
+        
+        if existing:
+            print(f"⚠️ Instance already exists for {next_due_date}")
+            return existing
+        
+        # Create new instance
+        instance = Task(
+            user_id=pattern_task.user_id,
+            description=pattern_task.description,
+            due_date=next_due_date,
+            status='pending',
+            is_recurring=False,
+            parent_recurring_id=pattern_task.id
+        )
+        
+        db.session.add(instance)
+        
+        # Update pattern
+        pattern_task.recurring_instance_count += 1
+        pattern_task.due_date = next_due_date  # Update pattern's due_date to next occurrence
+        
+        db.session.commit()
+        
+        print(f"✅ Generated recurring instance {instance.id} from pattern {pattern_task.id}")
+        return instance
+    
+    def _calculate_next_due_date(self, pattern_task: Task) -> Optional[datetime]:
+        """Calculate the next due date for a recurring pattern"""
+        import json
+        from datetime import timedelta
+        
+        if not pattern_task.due_date:
+            return None
+        
+        current_due = pattern_task.due_date
+        now_israel = datetime.now(self.israel_tz)
+        
+        if pattern_task.recurrence_pattern == 'daily':
+            next_due = current_due + timedelta(days=pattern_task.recurrence_interval or 1)
+        
+        elif pattern_task.recurrence_pattern == 'weekly':
+            next_due = current_due + timedelta(weeks=pattern_task.recurrence_interval or 1)
+        
+        elif pattern_task.recurrence_pattern == 'interval':
+            next_due = current_due + timedelta(days=pattern_task.recurrence_interval or 1)
+        
+        elif pattern_task.recurrence_pattern == 'specific_days':
+            # Parse days of week
+            if not pattern_task.recurrence_days_of_week:
+                return None
+            
+            days_list = json.loads(pattern_task.recurrence_days_of_week)
+            day_mapping = {
+                'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+                'friday': 4, 'saturday': 5, 'sunday': 6
+            }
+            target_weekdays = [day_mapping[d.lower()] for d in days_list if d.lower() in day_mapping]
+            
+            if not target_weekdays:
+                return None
+            
+            # Find next matching weekday
+            search_date = current_due + timedelta(days=1)
+            for _ in range(7):  # Check up to 7 days ahead
+                if search_date.weekday() in target_weekdays:
+                    # Keep the same time
+                    next_due = search_date.replace(
+                        hour=current_due.hour,
+                        minute=current_due.minute,
+                        second=0,
+                        microsecond=0
+                    )
+                    break
+                search_date += timedelta(days=1)
+            else:
+                return None
+        
+        else:
+            return None
+        
+        return next_due
+    
+    def stop_recurring_series(self, pattern_task_id: int, user_id: int, delete_instances: bool = False) -> Tuple[bool, str]:
+        """Stop a recurring series (deletes future instances)"""
+        try:
+            pattern = Task.query.filter_by(id=pattern_task_id, user_id=user_id, is_recurring=True).first()
+            
+            if not pattern:
+                return False, f"❌ לא נמצאה סדרה חוזרת #{pattern_task_id}"
+            
+            # Mark pattern as cancelled
+            pattern.status = 'cancelled'
+            
+            # Delete all future pending instances
+            if delete_instances:
+                deleted_count = Task.query.filter(
+                    Task.parent_recurring_id == pattern_task_id,
+                    Task.status == 'pending'
+                ).delete()
+                
+                db.session.commit()
+                
+                return True, f"✅ הסדרה החוזרת נעצרה ו-{deleted_count} משימות עתידיות נמחקו"
+            else:
+                db.session.commit()
+                return True, f"✅ הסדרה החוזרת נעצרה (משימות קיימות נשמרו)"
+            
+        except Exception as e:
+            print(f"❌ Error stopping series: {e}")
+            db.session.rollback()
+            return False, "❌ שגיאה בעצירת הסדרה"
+    
+    def complete_recurring_series(self, pattern_task_id: int, user_id: int) -> Tuple[bool, str]:
+        """Complete a recurring series (keeps all instances)"""
+        try:
+            pattern = Task.query.filter_by(id=pattern_task_id, user_id=user_id, is_recurring=True).first()
+            
+            if not pattern:
+                return False, f"❌ לא נמצאה סדרה חוזרת #{pattern_task_id}"
+            
+            # Mark pattern as completed
+            pattern.status = 'completed'
+            pattern.completed_at = datetime.utcnow()
+            
+            db.session.commit()
+            
+            return True, f"✅ הסדרה החוזרת הושלמה (כל המשימות הקיימות נשמרו)"
+            
+        except Exception as e:
+            print(f"❌ Error completing series: {e}")
+            db.session.rollback()
+            return False, "❌ שגיאה בהשלמת הסדרה"
+    
+    def get_recurring_patterns(self, user_id: int, active_only: bool = True) -> List[Task]:
+        """Get all recurring patterns for a user"""
+        try:
+            query = Task.query.filter_by(user_id=user_id, is_recurring=True)
+            
+            if active_only:
+                query = query.filter_by(status='pending')
+            
+            patterns = query.order_by(Task.created_at.desc()).all()
+            return patterns
+            
+        except Exception as e:
+            print(f"❌ Error getting recurring patterns: {e}")
+            return []
+    
+    def _format_recurrence_pattern(self, task: Task) -> str:
+        """Format recurrence pattern as Hebrew text"""
+        import json
+        
+        if not task.is_recurring:
+            return ""
+        
+        pattern = task.recurrence_pattern
+        interval = task.recurrence_interval or 1
+        
+        if pattern == 'daily':
+            if interval == 1:
+                return "כל יום"
+            else:
+                return f"כל {interval} ימים"
+        
+        elif pattern == 'weekly':
+            if interval == 1:
+                return "כל שבוע"
+            else:
+                return f"כל {interval} שבועות"
+        
+        elif pattern == 'specific_days':
+            if task.recurrence_days_of_week:
+                days = json.loads(task.recurrence_days_of_week)
+                day_names_heb = {
+                    'monday': 'שני', 'tuesday': 'שלישי', 'wednesday': 'רביעי',
+                    'thursday': 'חמישי', 'friday': 'שישי', 'saturday': 'שבת', 'sunday': 'ראשון'
+                }
+                hebrew_days = [day_names_heb.get(d.lower(), d) for d in days]
+                return f"כל יום {' ו'.join(hebrew_days)}"
+            return "ימים ספציפיים"
+        
+        elif pattern == 'interval':
+            return f"כל {interval} ימים"
+        
+        return "חוזר"
+
+    def update_recurring_pattern(self, pattern_id: int, user_id: int, task_data: Dict) -> Tuple[bool, str]:
+        """Update a recurring pattern and propagate changes to future pending instances."""
+        try:
+            pattern = Task.query.filter_by(id=pattern_id, user_id=user_id, is_recurring=True).first()
+            if not pattern:
+                return False, f"❌ לא נמצאה סדרה חוזרת #{pattern_id}"
+
+            old_description = pattern.description
+            old_due = pattern.due_date
+            old_time_tuple = (old_due.hour, old_due.minute) if old_due else None
+
+            # Extract fields
+            new_description = task_data.get('new_description')
+            new_due_str = task_data.get('due_date')
+            new_pattern = task_data.get('recurrence_pattern')
+            new_interval = task_data.get('recurrence_interval')
+            new_days = task_data.get('recurrence_days_of_week')
+            new_end_date_str = task_data.get('recurrence_end_date')
+
+            # Parse dates
+            new_due = None
+            if new_due_str:
+                new_due = self.parse_date_from_text(new_due_str)
+            new_end = None
+            if new_end_date_str:
+                new_end = self.parse_date_from_text(new_end_date_str)
+
+            # Apply updates to pattern
+            if new_description:
+                pattern.description = new_description.strip()[:500]
+            if new_pattern:
+                pattern.recurrence_pattern = new_pattern
+            if new_interval is not None:
+                pattern.recurrence_interval = int(new_interval) if str(new_interval).isdigit() else pattern.recurrence_interval
+            if new_days is not None:
+                try:
+                    # Accept list or comma-separated string
+                    if isinstance(new_days, str):
+                        import json as _json
+                        maybe_list = None
+                        try:
+                            maybe_list = _json.loads(new_days)
+                        except Exception:
+                            maybe_list = [d.strip() for d in new_days.split(',') if d.strip()]
+                        new_days_list = maybe_list
+                    else:
+                        new_days_list = new_days
+                    import json as _json
+                    pattern.recurrence_days_of_week = _json.dumps(new_days_list) if new_days_list else None
+                except Exception:
+                    pass
+            if new_end is not None:
+                pattern.recurrence_end_date = new_end
+            if new_due is not None:
+                pattern.due_date = new_due
+
+            db.session.commit()
+
+            # Determine if time-of-day changed
+            new_time_tuple = (pattern.due_date.hour, pattern.due_date.minute) if pattern.due_date else None
+            time_changed = old_time_tuple != new_time_tuple
+
+            # Propagate to future pending instances
+            future_instances = Task.query.filter(
+                Task.parent_recurring_id == pattern_id,
+                Task.status == 'pending',
+                Task.due_date >= datetime.utcnow()
+            ).all()
+
+            updated = 0
+            for inst in future_instances:
+                # update description
+                if new_description:
+                    inst.description = pattern.description
+                # align time-of-day while keeping the instance date
+                if time_changed and inst.due_date and pattern.due_date:
+                    inst.due_date = inst.due_date.replace(
+                        hour=pattern.due_date.hour,
+                        minute=pattern.due_date.minute,
+                        second=0,
+                        microsecond=0
+                    )
+                updated += 1
+
+            if updated:
+                db.session.commit()
+
+            changes = []
+            if new_description and new_description != old_description:
+                changes.append("תיאור התבנית עודכן")
+            if new_due is not None and new_due != old_due:
+                changes.append("שעת/תאריך היעד של התבנית עודכן")
+            if new_pattern or new_interval is not None or new_days is not None:
+                changes.append("דפוס החזרתיות עודכן")
+            if updated:
+                changes.append(f"עודכנו {updated} מופעים עתידיים")
+
+            message = "✅ התבנית החוזרת עודכנה" + (": " + ", ".join(changes) if changes else "")
+            return True, message
+
+        except Exception as e:
+            print(f"❌ Error updating recurring pattern: {e}")
+            db.session.rollback()
+            return False, "❌ שגיאה בעדכון התבנית החוזרת"

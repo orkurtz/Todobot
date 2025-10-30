@@ -215,7 +215,7 @@ def process_text_message(message, user, whatsapp_service, ai_service):
             task_summary = task_service.execute_parsed_tasks(user.id, parsed_tasks, sanitized_text)
             print(f"🔥 DEBUG - Execution result: {task_summary[:200] if task_summary else '(empty)'}")
             # Check if there's an action (not query)
-            has_action = any(task.get('action') in ['complete', 'delete', 'add', 'update', 'reschedule'] for task in parsed_tasks)
+            has_action = any(task.get('action') in ['complete', 'delete', 'add', 'update', 'reschedule', 'stop_series', 'complete_series'] for task in parsed_tasks)
         
         # Build response intelligently
         if has_action and task_summary:
@@ -401,15 +401,25 @@ def process_reaction_message(message, user, whatsapp_service):
         
         task_id = int(msg_record.content)
         
+        # Get task details before completing
+        task = Task.query.get(task_id)
+        
         # Complete the task
         success, result_msg = task_service.complete_task(task_id, user.id)
         
         if success:
-            task = Task.query.get(task_id)
-            whatsapp_service.send_message(
-                user.phone_number,
-                f"✅ השלמתי: {task.description if task else 'משימה'}"
-            )
+            # Build response with recurring info
+            response_text = f"✅ השלמתי: {task.description if task else 'משימה'}"
+            
+            # NEW: Add recurring info if applicable
+            if task and task.parent_recurring_id:
+                pattern = task.get_recurring_pattern()
+                if pattern:
+                    pattern_desc = task_service._format_recurrence_pattern(pattern)
+                    response_text += f"\n🔄 משימה חוזרת ({pattern_desc})"
+                    response_text += "\n💡 המשימה הבאה תופיע בחצות"
+            
+            whatsapp_service.send_message(user.phone_number, response_text)
         else:
             whatsapp_service.send_message(
                 user.phone_number,
@@ -453,6 +463,14 @@ def handle_basic_commands(user_id, text):
 • "פגישה ביום ראשון ב-10:00" 
 • "לקנות מצרכים היום"
 
+🔄 **משימות חוזרות:**
+• "תזכיר לי כל יום ב-9 לקחת ויטמינים"
+• "כל יום שני ורביעי ב-10 להתקשר"
+• "כל שבוע פגישה"
+• "משימות חוזרות" - הצג סדרות פעילות
+• "עצור סדרה [מספר]" - עצור ומחק עתידיות
+• "השלם סדרה [מספר]" - סיים אבל שמור קיימות
+
 💬 **שפות:** אני תומך בעברית, אנגלית, ערבית ועוד!
 
 🔧 **פקודות:**
@@ -460,7 +478,8 @@ def handle_basic_commands(user_id, text):
 • המשימות שלי \ ? - הצג רשימת משימות
 • פירוט - הצג כל משימה בנפרד (לתגובות 👍)
 • סטטיסטיקה - הצג נתונים
-• הושלמו - הצג משימות שהושלמו"""
+• הושלמו - הצג משימות שהושלמו
+• משימות חוזרות - הצג סדרות פעילות"""
     
     # Task list commands
     elif text_lower in ['tasks', 'my tasks', 'list', '/tasks', 'המשימות שלי', 'רשימה','משימות','?']:
@@ -475,6 +494,9 @@ def handle_basic_commands(user_id, text):
     
     elif text_lower in ['completed', 'done', '/completed', 'הושלמו']:
         return handle_completed_tasks_command(user_id)
+    
+    elif text_lower in ['recurring', 'recurring tasks', 'משימות קבועות', 'משימות חוזרות', 'סדרות']:
+        return handle_recurring_patterns_command(user_id)
     
     return None
 
@@ -594,6 +616,30 @@ def handle_completed_tasks_command(user_id):
     except Exception as e:
         print(f"❌ Error getting completed tasks: {e}")
         return "❌ שגיאה בשליפת המשימות שהושלמו. נסה שוב."
+
+def handle_recurring_patterns_command(user_id):
+    """Show active recurring patterns"""
+    try:
+        patterns = task_service.get_recurring_patterns(user_id, active_only=True)
+        
+        if not patterns:
+            return "📋 אין לך משימות חוזרות פעילות"
+        
+        response = f"🔄 **המשימות החוזרות שלך ({len(patterns)}):**\n\n"
+        for i, pattern in enumerate(patterns, 1):
+            pattern_desc = task_service._format_recurrence_pattern(pattern)
+            response += f"{i}. {pattern.description} - {pattern_desc} [#{pattern.id}]\n"
+            response += f"   נוצרו {pattern.recurring_instance_count} מופעים\n"
+        
+        response += "\n💡 **לניהול:**"
+        response += "\n• 'עצור סדרה [מספר]' - עצור ומחק עתידיות"
+        response += "\n• 'השלם סדרה [מספר]' - סיים ושמור קיימות"
+        
+        return response
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return "❌ שגיאה בשליפת משימות חוזרות"
 
 def handle_button_click(user_id, button_id):
     """Handle button click"""

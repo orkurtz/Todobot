@@ -107,6 +107,22 @@ class Task(db.Model):
     completed_at = db.Column(db.DateTime)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Recurring task fields
+    is_recurring = db.Column(db.Boolean, default=False, nullable=False)
+    recurrence_pattern = db.Column(db.String(50))  # 'daily', 'weekly', 'specific_days', 'interval'
+    recurrence_interval = db.Column(db.Integer)
+    recurrence_days_of_week = db.Column(db.String(100))  # JSON array as string
+    recurrence_end_date = db.Column(db.DateTime)
+    parent_recurring_id = db.Column(db.Integer, db.ForeignKey('task.id'), nullable=True)
+    recurring_instance_count = db.Column(db.Integer, default=0)
+    recurring_max_instances = db.Column(db.Integer, default=100)
+    
+    # Recurring relationship (self-referential)
+    recurring_instances = db.relationship('Task',
+        backref=db.backref('parent_pattern', remote_side=[id]),
+        foreign_keys=[parent_recurring_id],
+        lazy='dynamic')
+    
     # Strategic indexes for performance
     __table_args__ = (
         db.Index('idx_task_user_status', 'user_id', 'status'),
@@ -115,7 +131,23 @@ class Task(db.Model):
         db.Index('idx_task_status_due', 'status', 'due_date'),
         db.Index('idx_task_status', 'status'),
         db.Index('idx_task_created', 'created_at'),
+        db.Index('idx_task_is_recurring', 'is_recurring'),
+        db.Index('idx_task_parent_recurring', 'parent_recurring_id'),
     )
+    
+    def is_recurring_pattern(self):
+        """Check if this is a recurring pattern (not instance)"""
+        return self.is_recurring is True
+    
+    def is_recurring_instance(self):
+        """Check if this is an instance of a recurring pattern"""
+        return self.parent_recurring_id is not None
+    
+    def get_recurring_pattern(self):
+        """Get the parent pattern if this is an instance"""
+        if self.parent_recurring_id:
+            return Task.query.get(self.parent_recurring_id)
+        return None
 
 def init_database(app):
     """Initialize database with Flask app"""

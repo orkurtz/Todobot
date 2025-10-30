@@ -145,6 +145,19 @@ class SchedulerService:
             )
             print("Added daily reminder job (7 PM Israel time)")
 
+            # Job 5: Generate recurring task instances at midnight
+            self.scheduler.add_job(
+                func=self._generate_recurring_instances_midnight,
+                trigger="cron",
+                hour=0,
+                minute=0,
+                id="generate_recurring_instances",
+                name="Generate recurring task instances at midnight",
+                timezone=self.israel_tz,
+                kwargs={'app': app}
+            )
+            print("Added midnight recurring task generation job")
+
             # Shutdown scheduler on exit
             atexit.register(self._shutdown_scheduler)
 
@@ -175,6 +188,9 @@ class SchedulerService:
                 
                 # Get tasks that will be due in the next 30 minutes
                 due_tasks = task_service.get_due_tasks_for_reminders(time_window_minutes=30)
+                
+                # Filter out recurring patterns (only send reminders for instances or regular tasks)
+                due_tasks = [t for t in due_tasks if not t.is_recurring]
 
                 if len(due_tasks) == 0:
                     # print("No tasks due for reminders.") # Optional: Reduce log noise
@@ -600,6 +616,62 @@ class SchedulerService:
             print(f"Error getting scheduled jobs: {e}")
             return []
 
+    def _generate_recurring_instances_midnight(self, app):
+        """Generate recurring task instances at midnight"""
+        try:
+            with app.app_context():
+                from ..models.database import Task, db
+                from ..services.task_service import TaskService
+                
+                task_service = TaskService()
+                
+                # Get all active recurring patterns
+                recurring_patterns = Task.query.filter(
+                    Task.is_recurring == True,
+                    Task.status == 'pending'
+                ).all()
+                
+                if len(recurring_patterns) == 0:
+                    print("No active recurring patterns to process")
+                    return
+                
+                print(f"Processing {len(recurring_patterns)} recurring patterns")
+                generated_count = 0
+                
+                for pattern in recurring_patterns:
+                    try:
+                        # Check if we need to generate instance for today (Israel time)
+                        now_israel = datetime.now(self.israel_tz)
+                        due_israel = pattern.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz).date() if pattern.due_date else None
+                        
+                        # Only generate if pattern's due_date (in Israel) is today or past
+                        if due_israel and due_israel <= now_israel.date():
+                            instance = task_service.generate_next_instance(pattern)
+                            if instance:
+                                generated_count += 1
+                                print(f"✅ Generated instance for pattern {pattern.id}: {pattern.description[:50]}")
+                        
+                    except Exception as pattern_error:
+                        print(f"❌ Error generating instance for pattern {pattern.id}: {pattern_error}")
+                        try:
+                            if db.session.is_active:
+                                db.session.rollback()
+                        except:
+                            pass
+                        continue
+                
+                print(f"✅ Midnight generation completed: {generated_count} instances created")
+                
+        except Exception as e:
+            print(f"❌ Error in midnight recurring generation: {e}")
+            import traceback
+            traceback.print_exc()
+            try:
+                if db.session.is_active:
+                    db.session.rollback()
+            except:
+                pass
+    
     def is_running(self):
         """Check if scheduler is running"""
         return self.scheduler and hasattr(self.scheduler, 'running') and self.scheduler.running

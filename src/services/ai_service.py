@@ -94,6 +94,28 @@ Actions:
 - 'update': Change task description (and optionally due date)
 - 'reschedule': Change only the due date/time
 - 'query': Ask about tasks
+- 'stop_series': Stop a recurring series
+- 'complete_series': Complete a recurring series
+
+Recurring Task Support:
+- "תזכיר לי כל יום..." → daily recurring
+- "כל יום ב-9" / "every day at 9am" → daily at specific time
+- "כל שבוע" / "every week" → weekly recurring
+- "כל יום שני" / "every Monday" → weekly on specific day
+- "כל יום שני ורביעי" / "every Monday and Wednesday" → specific multiple days
+- "כל יומיים" / "every 2 days" → interval recurring
+- "כל שני וחמישי ב-15:00" → specific days with time
+
+Series Management:
+- "עצור סדרה [מספר]" / "stop series [number]" → stop_series action
+- "השלם סדרה [מספר]" / "complete series [number]" → complete_series action
+- "מחק סדרה [מספר]" / "delete series [number]" → stop_series with delete
+
+For recurring tasks, add these fields:
+- "recurrence_pattern": "daily" | "weekly" | "specific_days" | "interval"
+- "recurrence_interval": number (default 1)
+- "recurrence_days_of_week": ["monday", "wednesday"] or null
+- "recurrence_end_date": date string or null
 
 Current date for reference: {current_date}
 User timezone: Asia/Jerusalem
@@ -149,6 +171,26 @@ English - Update:
 English - Complete:
 - "Done with task 2" → {{"tasks": [{{"action": "complete", "description": "2", "task_id": "2"}}]}}
 - "Finished 3" → {{"tasks": [{{"action": "complete", "description": "3", "task_id": "3"}}]}}
+
+Recurring Tasks:
+"תזכיר לי כל יום ב-9 לקחת ויטמינים" →
+{{"tasks": [{{"action": "add", "description": "לקחת ויטמינים", "due_date": "היום ב-9:00", "recurrence_pattern": "daily", "recurrence_interval": 1}}]}}
+
+"כל יום שני ורביעי ב-10 להתקשר" →
+{{"tasks": [{{"action": "add", "description": "להתקשר", "due_date": "next Monday at 10am", "recurrence_pattern": "specific_days", "recurrence_days_of_week": ["monday", "wednesday"]}}]}}
+
+"כל יומיים להשקות צמחים" →
+{{"tasks": [{{"action": "add", "description": "להשקות צמחים", "due_date": "היום", "recurrence_pattern": "interval", "recurrence_interval": 2}}]}}
+
+"every day at 9am take vitamins" →
+{{"tasks": [{{"action": "add", "description": "take vitamins", "due_date": "today at 9am", "recurrence_pattern": "daily", "recurrence_interval": 1}}]}}
+
+Series Management:
+"עצור סדרה 5" →
+{{"tasks": [{{"action": "stop_series", "task_id": "5"}}]}}
+
+"השלם סדרה 3" →
+{{"tasks": [{{"action": "complete_series", "task_id": "3"}}]}}
 
 Important: Always include "task_id" field when user mentions a specific task number!
 
@@ -273,14 +315,19 @@ Message to analyze: {message}"""
                     action = task.get('action', 'add')
                     
                     # For these actions, description is optional (task_id is used instead)
-                    if action in ['reschedule', 'complete', 'delete', 'update', 'query']:
+                    if action in ['reschedule', 'complete', 'delete', 'update', 'query', 'stop_series', 'complete_series']:
                         valid_tasks.append({
                             'action': action,
                             'description': task.get('description', '').strip(),  # Can be empty for these actions
                             'due_date': task.get('due_date'),
                             'status': task.get('status', 'pending'),
                             'task_id': task.get('task_id'),
-                            'new_description': task.get('new_description')
+                            'new_description': task.get('new_description'),
+                            # NEW: Recurring fields
+                            'recurrence_pattern': task.get('recurrence_pattern'),
+                            'recurrence_interval': task.get('recurrence_interval', 1),
+                            'recurrence_days_of_week': task.get('recurrence_days_of_week'),
+                            'recurrence_end_date': task.get('recurrence_end_date')
                         })
                     # For 'add' action, description is required
                     elif action == 'add' and task.get('description') and len(task['description'].strip()) > 0:
@@ -290,7 +337,12 @@ Message to analyze: {message}"""
                             'due_date': task.get('due_date'),
                             'status': task.get('status', 'pending'),
                             'task_id': task.get('task_id'),
-                            'new_description': task.get('new_description')
+                            'new_description': task.get('new_description'),
+                            # NEW: Recurring fields
+                            'recurrence_pattern': task.get('recurrence_pattern'),
+                            'recurrence_interval': task.get('recurrence_interval', 1),
+                            'recurrence_days_of_week': task.get('recurrence_days_of_week'),
+                            'recurrence_end_date': task.get('recurrence_end_date')
                         })
                 
                 print(f"✅ Validated {len(valid_tasks)} task(s) after filtering")
