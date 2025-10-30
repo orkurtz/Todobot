@@ -122,6 +122,32 @@
 
 ---
 
+## 🆕 Recent Updates
+
+### Latest Improvements (October 2025)
+
+#### 🔔 Enhanced Reminder System
+- **30-Minute Advance Warnings**: Task reminders now arrive 30 minutes before due time (upgraded from at-time notifications)
+- **Daily Check-in Nudges**: New proactive reminders 3 times daily (11 AM, 3 PM, 7 PM)
+- **Smart Congratulations**: Positive reinforcement when you have no pending tasks
+
+#### 🎯 Improved Task Operations
+- **Robust Task Management**: Fixed validation for all task operations (complete, delete, update, reschedule)
+- **Task ID Support**: All operations now properly handle task_id references
+- **Flexible Syntax**: Enhanced support for various Hebrew word orders and phrasings
+
+#### 📅 Better Date Parsing
+- **Israeli Date Format**: Full support for DD/MM and DD/MM/YYYY formats
+- **Timezone Accuracy**: All "today" calculations use Israel timezone correctly
+- **Flexible Time Input**: Works with formats like "31/10 בשעה 14:30"
+
+#### 🤖 AI Understanding Improvements
+- **Enhanced Prompt Examples**: AI now better understands varied Hebrew sentence structures
+- **DD/MM Recognition**: Correctly interprets Israeli date format (not US MM/DD)
+- **Word Order Flexibility**: Handles commands like "דחה ל-31/10 את משימה 12" and "דחה את משימה 12 ל-31/10"
+
+---
+
 ## ✨ Features
 
 ### 🎯 Smart Task Management
@@ -129,7 +155,11 @@
 - **Automatic Task Extraction**: AI identifies actionable items from your messages
 - **Voice Message Support**: 🎤 Send voice notes in Hebrew or English - automatic transcription + task extraction
 - **Task Updates**: Change task descriptions with `"שנה משימה 2 להתקשר לרופא"`
-- **Task Rescheduling**: Move due dates with `"דחה משימה 3 למחר"` or `"postpone task 5 by 2 hours"`
+- **Task Rescheduling**: Move due dates with flexible syntax:
+  - `"דחה משימה 3 למחר"` or `"דחה ל-31/10 את משימה 12"`
+  - `"postpone task 5 by 2 hours"` or `"העבר משימה 5 לתאריך 15/12"`
+  - Supports DD/MM format (Israeli standard)
+- **Robust Task Operations**: All task actions (complete, delete, update, reschedule) work reliably with task IDs
 - **Task Status Tracking**: Pending, completed, and progress tracking
 - **Smart Task Queries**: Ask questions like `"מתי הפגישה עם יוחנן?"` and get real-time answers
 
@@ -138,7 +168,9 @@
 - **English Relative Times**: `"in 2 minutes"`, `"in half an hour"`, `"next week"`
 - **Hebrew Dates**: `"היום"`, `"מחר"`, `"מחרתיים"`, `"יום ראשון"`
 - **English Dates**: `"today"`, `"tomorrow"`, `"next Monday at 3pm"`
-- **Exact Times**: `"מחר ב-15:00"`, `"tomorrow at 3pm"`
+- **Israeli Date Format**: Supports DD/MM and DD/MM/YYYY (e.g., `"31/10"`, `"15/12/2025"`)
+- **Exact Times**: `"מחר ב-15:00"`, `"tomorrow at 3pm"`, `"31/10 בשעה 14:30"`
+- **Flexible Word Order**: Works with various Hebrew phrasings (e.g., `"דחה ל-31/10 את משימה 12"` or `"דחה את משימה 12 ל-31/10"`)
 
 ### 🇮🇱 Hebrew Language Optimization
 - **Natural Hebrew**: מבין עברית בצורה טבעית ומדויקת
@@ -269,7 +301,7 @@ Todobot/
 │   │   ├── whatsapp_service.py # WhatsApp API client
 │   │   ├── task_service.py     # Task management (CRUD + update/reschedule)
 │   │   ├── encryption.py      # Data encryption (AES-256)
-│   │   ├── scheduler_service.py # Background task scheduling
+│   │   ├── scheduler_service.py # Background jobs (reminders, daily nudges, cleanup)
 │   │   └── monitoring_service.py # System monitoring
 │   ├── utils/             # Utility functions
 │   │   ├── rate_limiter.py    # Rate limiting (Redis-backed)
@@ -277,7 +309,7 @@ Todobot/
 │   │   ├── media_handler.py   # WhatsApp media downloads
 │   │   └── validation.py      # Input validation
 │   ├── routes/            # Flask routes
-│   │   ├── webhook.py     # WhatsApp webhook handler (text + voice)
+│   │   ├── webhook.py     # WhatsApp webhook handler (text + voice + reactions)
 │   │   ├── admin.py       # Admin dashboard
 │   │   └── api.py         # REST API endpoints
 │   ├── config/            # Configuration
@@ -297,7 +329,8 @@ Todobot/
 Send these messages to the bot:
 
 - `עזרה` or `help` - Get help and available commands
-- `משימות` or `המשימות שלי` - View your pending tasks
+- `משימות` or `המשימות שלי` - View your pending tasks (combined list)
+- `פירוט` or `משימות נפרד` or `tasks separate` - View tasks as separate messages (for emoji reactions)
 - `סטטיסטיקה` or `stats` - See your productivity statistics
 - `הושלמו` or `completed` - View recently completed tasks
 
@@ -342,10 +375,43 @@ Send these messages to the bot:
   - "remind me to call mom tomorrow at three PM"
   - "done with task number two"
 
+### 👍 Emoji Reactions (NEW!)
+
+Get tasks as separate messages and complete them with emoji reactions:
+
+1. **Get separate tasks:** Send `פירוט`, `משימות נפרד`, or `tasks separate`
+2. **Complete a task:** React with 👍 to any task message
+3. **Confirmation:** Bot automatically confirms completion
+
+**Example:**
+```
+You: "פירוט"
+Bot: "📋 המשימות שלך (3):"
+Bot: "1. להתקשר לאמא [#14]"  ← React with 👍 here
+Bot: "2. לקנות חלב [#15]"
+Bot: "3. פגישה עם רופא [#16]"
+Bot: "לסיום משימה הגב עם האימוגי 👍"
+
+[You react with 👍 on task 1]
+Bot: "✅ השלמתי: להתקשר לאמא"
+```
+
+**Features:**
+- Each task is a separate message for easy reaction
+- Works only with tasks sent via the separate command
+- No need to type task numbers
+- Clean, intuitive UX
+
 ### Task Management Actions
 
 #### ✅ Complete Tasks
-- React with 👍 to any message
+
+**Option 1: Emoji Reactions** 👍
+1. Send `פירוט` or `משימות נפרד` to get each task as a separate message
+2. React with 👍 emoji on any task message to complete it
+3. Bot confirms completion automatically
+
+**Option 2: Text Commands**
 - "סיימתי משימה 2" / "done with task 2"
 - "גמרתי את 1" / "finished 1"
 
@@ -362,11 +428,27 @@ Send these messages to the bot:
 - "מתי הפגישה עם יוחנן?" / "when is the meeting with John?"
 - "כמה משימות יש לי?" / "how many tasks do I have?"
 
-### Task Reminders
+### 🔔 Task Reminders & Daily Check-ins
 
-- Tasks with due dates will send reminders 15 minutes before
+#### Smart Pre-Task Reminders
+- Tasks with due dates automatically send reminders **30 minutes before** the scheduled time
+- Worker checks every 30 seconds to ensure timely notifications
+- Each task gets exactly one reminder (prevents duplicates)
+
+#### Daily Task Nudges (3x per day)
+The bot proactively checks in with you three times daily:
+- **11:00 AM** - Morning reminder: "היי מה קורה? יש לך עדיין משימות פתוחות להיום"
+- **3:00 PM** - Afternoon reminder: Shows remaining tasks for today
+- **7:00 PM** - Evening reminder: Final reminder before end of day
+
+**Smart Response:**
+- If you have tasks: Shows up to 10 tasks due today with times
+- If no tasks: "כול הכבוד! 🎉 אין לך משימות פתוחות כרגע. תיהנה מהיום! 😊"
+
+#### Visual Indicators
 - Overdue tasks are highlighted with ⚠️
 - Tasks due today show 🔥
+- Morning summary (9 AM) shows both overdue + today's tasks
 
 ## 🚀 Deployment
 
@@ -512,28 +594,35 @@ Application logs include:
 
 ## 🆕 What's New
 
-### Recent Updates (Past 3 Days)
+### Latest Updates (October 2025)
 
-#### 🎤 Voice Message Support (NEW!)
+#### 🔔 Enhanced Reminder System
+- **30-Minute Advance Warnings**: Reminders now arrive 30 minutes before task due time (not at/after)
+- **Daily Check-in Nudges**: Proactive reminders 3 times daily (11 AM, 3 PM, 7 PM) showing today's tasks
+- **Smart Responses**: Congratulates you when you have no pending tasks
+
+#### 🎯 Task Management Improvements
+- **Fixed Validation**: All task operations (complete, delete, update, reschedule) now work reliably with task IDs
+- **DD/MM Date Support**: Full support for Israeli date format (31/10, 15/12/2025)
+- **Flexible Syntax**: Works with varied Hebrew word orders like "דחה ל-31/10 את משימה 12"
+- **Enhanced AI Understanding**: Better recognition of Hebrew task commands with the word "את"
+
+#### 📅 Date & Time Parsing
+- **Israeli Format Priority**: DD/MM parsed correctly (not US MM/DD)
+- **Timezone Accuracy**: All "today" calculations use Israel timezone
+- **Combined Formats**: Supports "31/10 בשעה 14:30" style inputs
+
+### Previous Updates
+
+#### 🎤 Voice Message Support
 - Full voice message transcription using Gemini 2.5 Flash multimodal API
 - Automatic task extraction from Hebrew and English voice notes
 - Single API call for transcription + task parsing
-- Media download handler for WhatsApp audio files
 
-#### ⏰ Advanced Time Parsing (NEW!)
-- Hebrew relative times: "בעוד 5 דקות", "בעוד שעתיים"
-- English relative times: "in 2 minutes", "in half an hour"
-- Enhanced natural language understanding for dates
-
-#### 🔄 Task Update & Reschedule (NEW!)
-- Update task descriptions: "שנה משימה 2 להתקשר לרופא"
-- Reschedule tasks: "דחה משימה 3 למחר"
-- Combined updates: change description + due date together
-
-#### 🛡️ Reliability Improvements (NEW!)
+#### 🛡️ Reliability Features
 - Circuit breaker pattern for API failure recovery
 - Advanced rate limiting with Redis backend
-- Improved JSON parsing from AI responses
+- End-to-end encryption (AES-256) for user data
 - Better error handling throughout
 
 #### 🤖 AI Enhancements (NEW!)
