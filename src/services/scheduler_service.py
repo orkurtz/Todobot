@@ -4,7 +4,7 @@ Scheduler service for handling reminders and background tasks
 import os
 import atexit
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import re # Ensure re is imported if you used the JSON cleaning fix elsewhere or might need it
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -105,6 +105,46 @@ class SchedulerService:
             )
             print("Added daily summary job (9 AM Israel time)")
 
+            # Job 4: Daily task reminders - 3 times a day
+            # Morning reminder (11 AM)
+            self.scheduler.add_job(
+                func=self._send_daily_task_reminder,
+                trigger="cron",
+                hour=11,
+                minute=0,
+                id="daily_reminder_morning",
+                name="Daily task reminder - Morning (11 AM)",
+                timezone=self.israel_tz,
+                kwargs={'app': app}
+            )
+            print("Added daily reminder job (11 AM Israel time)")
+
+            # Afternoon reminder (3 PM)
+            self.scheduler.add_job(
+                func=self._send_daily_task_reminder,
+                trigger="cron",
+                hour=15,
+                minute=0,
+                id="daily_reminder_afternoon",
+                name="Daily task reminder - Afternoon (3 PM)",
+                timezone=self.israel_tz,
+                kwargs={'app': app}
+            )
+            print("Added daily reminder job (3 PM Israel time)")
+
+            # Evening reminder (7 PM)
+            self.scheduler.add_job(
+                func=self._send_daily_task_reminder,
+                trigger="cron",
+                hour=19,
+                minute=0,
+                id="daily_reminder_evening",
+                name="Daily task reminder - Evening (7 PM)",
+                timezone=self.israel_tz,
+                kwargs={'app': app}
+            )
+            print("Added daily reminder job (7 PM Israel time)")
+
             # Shutdown scheduler on exit
             atexit.register(self._shutdown_scheduler)
 
@@ -130,21 +170,17 @@ class SchedulerService:
 
         try:
             with app.app_context():
-                now = datetime.utcnow()
-
-                # Find tasks that are due for reminders and haven't been sent yet
-                due_tasks = Task.query.filter(
-                    Task.due_date <= now,
-                    (Task.reminder_sent == False) | (Task.reminder_sent.is_(None)),
-                    Task.status == 'pending',
-                    Task.due_date.isnot(None)
-                ).all()
+                from ..services.task_service import TaskService
+                task_service = TaskService()
+                
+                # Get tasks that will be due in the next 30 minutes
+                due_tasks = task_service.get_due_tasks_for_reminders(time_window_minutes=30)
 
                 if len(due_tasks) == 0:
                     # print("No tasks due for reminders.") # Optional: Reduce log noise
                     return
 
-                print(f"Found {len(due_tasks)} tasks due for reminders")
+                print(f"Found {len(due_tasks)} tasks due for reminders in next 30 minutes")
 
                 # Send reminders
                 for task in due_tasks:
@@ -300,6 +336,86 @@ class SchedulerService:
                 
         except Exception as e:
             print(f"❌ Error in daily summary job: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _send_daily_task_reminder(self, app):
+        """Send friendly reminders 3 times a day about today's pending tasks"""
+        if not self.whatsapp_service:
+            print("WhatsApp service not available for daily reminders.")
+            return
+        
+        try:
+            with app.app_context():
+                from ..models.database import Task, User, db
+                
+                # Get all active users
+                active_users = User.query.filter(
+                    User.last_active.isnot(None)
+                ).all()
+                
+                if len(active_users) == 0:
+                    print("No active users for daily reminder")
+                    return
+                
+                print(f"Sending daily reminder to {len(active_users)} users")
+                
+                for user in active_users:
+                    try:
+                        # Calculate TODAY's range in Israel timezone
+                        now_israel = datetime.now(self.israel_tz)
+                        today_start_israel = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
+                        today_end_israel = today_start_israel + timedelta(days=1)
+                        
+                        today_start = today_start_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+                        today_end = today_end_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+                        
+                        # Get ONLY tasks due today (not overdue, not future)
+                        tasks_due_today = Task.query.filter(
+                            Task.user_id == user.id,
+                            Task.status == 'pending',
+                            Task.due_date >= today_start,
+                            Task.due_date < today_end
+                        ).order_by(Task.due_date.asc()).all()
+                        
+                        # Build message based on whether there are tasks
+                        if len(tasks_due_today) > 0:
+                            # User has pending tasks today
+                            message_parts = ["היי מה קורה? 👋\nיש לך עדיין משימות פתוחות להיום:\n"]
+                            
+                            for task in tasks_due_today[:10]:  # Show up to 10 tasks
+                                if task.due_date:
+                                    due_local = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                                    time_str = due_local.strftime('%H:%M')
+                                    message_parts.append(f"🔸 {task.description[:60]} ({time_str})")
+                                else:
+                                    message_parts.append(f"🔸 {task.description[:60]}")
+                            
+                            if len(tasks_due_today) > 10:
+                                message_parts.append(f"\n... ועוד {len(tasks_due_today) - 10} משימות נוספות")
+                            
+                            message_parts.append("\n💪 בואו נסיים אותן!")
+                            reminder_text = "\n".join(message_parts)
+                        else:
+                            # No tasks for today - congratulate the user!
+                            reminder_text = "כול הכבוד! 🎉\nאין לך משימות פתוחות כרגע.\n\nתיהנה מהיום! 😊"
+                        
+                        # Send WhatsApp message
+                        result = self.whatsapp_service.send_message(user.phone_number, reminder_text)
+                        
+                        if result.get("success"):
+                            print(f"✅ Sent daily reminder to user {user.id} ({len(tasks_due_today)} tasks)")
+                        else:
+                            print(f"❌ Failed to send reminder to user {user.id}: {result.get('error')}")
+                        
+                    except Exception as user_error:
+                        print(f"❌ Error sending reminder to user {user.id}: {user_error}")
+                        continue
+                
+                print(f"✅ Daily reminder job completed")
+                
+        except Exception as e:
+            print(f"❌ Error in daily reminder job: {e}")
             import traceback
             traceback.print_exc()
 

@@ -389,7 +389,7 @@ def handle_basic_commands(user_id, text):
     text_lower = text.lower().strip()
     
     # Help command
-    if text_lower in ['help', '/help', '?', 'עזרה']:
+    if text_lower in ['help', '/help', 'תפריט', 'עזרה']:
         return """🤖 עזרה - בוט המשימות בוואטסאפ
 
 📝 **ניהול משימות:**
