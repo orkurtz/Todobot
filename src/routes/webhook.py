@@ -394,7 +394,7 @@ def handle_basic_commands(user_id, text):
 
 📝 **ניהול משימות:**
 • פשוט ספר לי מה אתה צריך לעשות ואני אצור משימות
-• כתוב "המשימות שלי" כדי לראות משימות ממתינות
+• כתוב "המשימות שלי" או ? כדי לראות משימות ממתינות
 • כתוב "סטטיסטיקה" לנתוני ביצועים שלך
 • הגב עם 👍 כדי לסמן משימות כהושלמו
 
@@ -407,12 +407,12 @@ def handle_basic_commands(user_id, text):
 
 🔧 **פקודות:**
 • עזרה - הצג עזרה זו
-• משימות - הצג רשימת משימות
+• המשימות שלי - הצג רשימת משימות
 • סטטיסטיקה - הצג נתונים
 • הושלמו - הצג משימות שהושלמו"""
     
     # Task list commands
-    elif text_lower in ['tasks', 'my tasks', 'list', '/tasks', 'המשימות שלי', 'רשימה']:
+    elif text_lower in ['tasks', 'my tasks', 'list', '/tasks', 'המשימות שלי', 'רשימה','משימות','?']:
         return handle_task_list_command(user_id)
     
     elif text_lower in ['stats', 'statistics', '/stats', 'סטטיסטיקה']:

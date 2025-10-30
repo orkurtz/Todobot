@@ -450,20 +450,24 @@ class TaskService:
                 action = task_data.get('action', 'add')
                 description = task_data.get('description', '').strip()
                 
-                if not description:
+                # Only require description for 'add' action
+                # For other actions (reschedule, update, complete, delete, query), task_id is used instead
+                if action == 'add' and not description:
                     continue
                 
                 if action == 'complete':
-                    # Handle task completion
-                    success, message = self._handle_task_completion(user_id, description, original_message)
+                    # Handle task completion - use task_id if available, fallback to description
+                    task_identifier = task_data.get('task_id') or description
+                    success, message = self._handle_task_completion(user_id, task_identifier, original_message)
                     if success:
                         completed_tasks.append(message)
                     else:
                         failed_tasks.append(f"Failed to complete: {message}")
                 
                 elif action == 'delete':
-                    # Handle task deletion
-                    success, message = self._handle_task_deletion(user_id, description)
+                    # Handle task deletion - use task_id if available, fallback to description
+                    task_identifier = task_data.get('task_id') or description
+                    success, message = self._handle_task_deletion(user_id, task_identifier)
                     if success:
                         deleted_tasks.append(message)
                     else:
