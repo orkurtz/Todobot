@@ -224,6 +224,14 @@ Message to analyze: {message}"""
             # Make API call
             response_text = self._make_api_call_with_retry(prompt)
             
+            # === DEBUG: Show raw AI response ===
+            print(f"🔥 DEBUG parse_tasks - Raw AI Response:")
+            print(f"   Input message: '{message_text}'")
+            print(f"   AI returned ({len(response_text)} chars):")
+            print(f"   {response_text[:800]}")  # First 800 characters
+            if len(response_text) > 800:
+                print(f"   ... (truncated, total {len(response_text)} chars)")
+            
             # ------------------------------------------------------------------
             # === SIMPLE & EFFECTIVE FIX START ===
             # This robustly finds and extracts the JSON from the raw response.
@@ -234,12 +242,16 @@ Message to analyze: {message}"""
             match = re.search(r"\{.*\}", response_text, re.DOTALL)
             
             if not match:
-                print(f"Failed to find any JSON in the AI response.")
+                print(f"❌ Failed to find any JSON in the AI response.")
                 print(f"Raw response: {response_text}")
                 return []
 
             # Extract the matched JSON string
             cleaned_response = match.group(0)
+            print(f"✅ Found JSON block ({len(cleaned_response)} chars):")
+            print(f"   {cleaned_response[:500]}")
+            if len(cleaned_response) > 500:
+                print(f"   ... (truncated)")
             
             # ------------------------------------------------------------------
             # === SIMPLE & EFFECTIVE FIX END ===
@@ -250,6 +262,10 @@ Message to analyze: {message}"""
                 # Parse the *cleaned* text
                 parsed_data = json.loads(cleaned_response) 
                 tasks = parsed_data.get('tasks', [])
+                
+                print(f"✅ JSON parsed successfully, found {len(tasks)} task(s) in JSON")
+                for idx, task in enumerate(tasks):
+                    print(f"   Task {idx+1}: {task}")
                 
                 # Validate and clean tasks - INCLUDING action field
                 valid_tasks = []
@@ -263,6 +279,8 @@ Message to analyze: {message}"""
                             'task_id': task.get('task_id'),  # Include task_id for update/reschedule/complete
                             'new_description': task.get('new_description')  # Include new_description for updates
                         })
+                
+                print(f"✅ Validated {len(valid_tasks)} task(s) after filtering")
                 
                 self.circuit_breaker.record_success()
                 return valid_tasks

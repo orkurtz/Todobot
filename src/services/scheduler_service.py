@@ -80,6 +80,31 @@ class SchedulerService:
             )
             print("Added recurring job to check database for due reminders every 30 seconds")
 
+            # Job 2: Cleanup old completed/cancelled tasks (weekly)
+            self.scheduler.add_job(
+                func=self._cleanup_old_tasks,
+                trigger="cron",
+                day_of_week='sun',
+                hour=2,
+                id="cleanup_tasks",
+                name="Weekly cleanup of old completed tasks",
+                kwargs={'app': app}
+            )
+            print("Added weekly cleanup job (Sundays at 2 AM)")
+
+            # Job 3: Send daily summary (every morning)
+            self.scheduler.add_job(
+                func=self._send_daily_summary,
+                trigger="cron",
+                hour=9,
+                minute=0,
+                id="daily_summary",
+                name="Daily task summary",
+                timezone=self.israel_tz,
+                kwargs={'app': app}
+            )
+            print("Added daily summary job (9 AM Israel time)")
+
             # Shutdown scheduler on exit
             atexit.register(self._shutdown_scheduler)
 
@@ -145,6 +170,138 @@ class SchedulerService:
             except Exception as rb_err:
                 print(f"Rollback error after main exception: {rb_err}")
 
+    def _cleanup_old_tasks(self, app):
+        """Delete completed and cancelled tasks older than 30 days"""
+        try:
+            with app.app_context():
+                from ..models.database import Task, db
+                
+                # Calculate cutoff date (30 days ago)
+                cutoff_date = datetime.utcnow() - timedelta(days=30)
+                
+                # Find old completed and cancelled tasks
+                old_tasks = Task.query.filter(
+                    Task.status.in_(['completed', 'cancelled']),
+                    Task.updated_at < cutoff_date
+                ).all()
+                
+                if len(old_tasks) == 0:
+                    print("No old tasks to clean up")
+                    return
+                
+                print(f"Found {len(old_tasks)} old tasks to delete")
+                
+                # Delete tasks
+                for task in old_tasks:
+                    db.session.delete(task)
+                
+                db.session.commit()
+                print(f"✅ Cleaned up {len(old_tasks)} old tasks")
+                
+        except Exception as e:
+            print(f"❌ Error in cleanup job: {e}")
+            import traceback
+            traceback.print_exc()
+            try:
+                if db.session.is_active:
+                    db.session.rollback()
+            except:
+                pass
+
+    def _send_daily_summary(self, app):
+        """Send daily summary to all active users"""
+        if not self.whatsapp_service:
+            print("WhatsApp service not available for daily summary.")
+            return
+        
+        try:
+            with app.app_context():
+                from ..models.database import Task, User, db
+                
+                # Get all users who have been active
+                active_users = User.query.filter(
+                    User.last_active.isnot(None)
+                ).all()
+                
+                if len(active_users) == 0:
+                    print("No active users for daily summary")
+                    return
+                
+                print(f"Sending daily summary to {len(active_users)} users")
+                now = datetime.utcnow()
+                
+                for user in active_users:
+                    try:
+                        # Get tasks due today
+                        now_israel = datetime.now(self.israel_tz)
+                        today_start_israel = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
+                        today_end_israel = today_start_israel + timedelta(days=1)
+                        
+                        today_start = today_start_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+                        today_end = today_end_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+                        
+                        tasks_due_today = Task.query.filter(
+                            Task.user_id == user.id,
+                            Task.status == 'pending',
+                            Task.due_date >= today_start,
+                            Task.due_date < today_end
+                        ).order_by(Task.due_date.asc()).all()
+                        
+                        # Get overdue tasks
+                        overdue_tasks = Task.query.filter(
+                            Task.user_id == user.id,
+                            Task.status == 'pending',
+                            Task.due_date < now,
+                            Task.due_date.isnot(None)
+                        ).order_by(Task.due_date.asc()).all()
+                        
+                        # Skip users with no tasks
+                        if len(tasks_due_today) == 0 and len(overdue_tasks) == 0:
+                            continue
+                        
+                        # Build summary message
+                        summary_parts = ["📋 סיכום משימות יומי\n"]
+                        
+                        if overdue_tasks:
+                            summary_parts.append(f"⚠️ באיחור ({len(overdue_tasks)}):")
+                            for task in overdue_tasks[:5]:
+                                due_local = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                                summary_parts.append(f"  • {task.description[:50]} ({due_local.strftime('%d/%m %H:%M')})")
+                            if len(overdue_tasks) > 5:
+                                summary_parts.append(f"  ... ועוד {len(overdue_tasks) - 5}")
+                            summary_parts.append("")
+                        
+                        if tasks_due_today:
+                            summary_parts.append(f"📅 להיום ({len(tasks_due_today)}):")
+                            for task in tasks_due_today[:5]:
+                                due_local = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                                summary_parts.append(f"  • {task.description[:50]} ({due_local.strftime('%H:%M')})")
+                            if len(tasks_due_today) > 5:
+                                summary_parts.append(f"  ... ועוד {len(tasks_due_today) - 5}")
+                            summary_parts.append("")
+                        
+                        summary_parts.append("💪 בהצלחה היום!")
+                        
+                        summary_text = "\n".join(summary_parts)
+                        
+                        # Send WhatsApp message
+                        result = self.whatsapp_service.send_message(user.phone_number, summary_text)
+                        
+                        if result.get("success"):
+                            print(f"✅ Sent daily summary to user {user.id}")
+                        else:
+                            print(f"❌ Failed to send summary to user {user.id}: {result.get('error')}")
+                        
+                    except Exception as user_error:
+                        print(f"❌ Error sending summary to user {user.id}: {user_error}")
+                        continue
+                
+                print(f"✅ Daily summary job completed")
+                
+        except Exception as e:
+            print(f"❌ Error in daily summary job: {e}")
+            import traceback
+            traceback.print_exc()
 
     # --- THIS IS THE CORRECTED FUNCTION ---
     def _send_task_reminder(self, task, app):
