@@ -7,7 +7,7 @@ import requests
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 
-from ..models.database import db, User, Message
+from ..models.database import db, User, Message, Task
 from ..services.encryption import encryption_service
 from ..services.task_service import TaskService
 from ..utils.validation import InputValidator
@@ -161,6 +161,8 @@ def process_incoming_message(message, value):
             process_button_message(message, user, whatsapp_service)
         elif message_type == 'interactive':
             process_interactive_message(message, user, whatsapp_service)
+        elif message_type == 'reaction':
+            process_reaction_message(message, user, whatsapp_service)
         else:
             # Handle unsupported message types
             whatsapp_service.send_message(
@@ -372,6 +374,53 @@ def process_interactive_message(message, user, whatsapp_service):
     except Exception as e:
         print(f"❌ Error processing interactive message: {e}")
 
+def process_reaction_message(message, user, whatsapp_service):
+    """Process emoji reaction to complete tasks"""
+    try:
+        from ..models.database import Message, Task, db
+        
+        reaction = message.get('reaction', {})
+        emoji = reaction.get('emoji')
+        message_id = reaction.get('message_id')
+        
+        print(f"👍 Reaction: {emoji} on message {message_id}")
+        
+        if emoji != '👍' or not message_id:
+            return
+        
+        # Find task ID from message mapping
+        msg_record = Message.query.filter_by(
+            user_id=user.id,
+            whatsapp_message_id=message_id,
+            message_type='task_reference'
+        ).first()
+        
+        if not msg_record:
+            print(f"No task mapping for message {message_id}")
+            return
+        
+        task_id = int(msg_record.content)
+        
+        # Complete the task
+        success, result_msg = task_service.complete_task(task_id, user.id)
+        
+        if success:
+            task = Task.query.get(task_id)
+            whatsapp_service.send_message(
+                user.phone_number,
+                f"✅ השלמתי: {task.description if task else 'משימה'}"
+            )
+        else:
+            whatsapp_service.send_message(
+                user.phone_number,
+                f"❌ לא הצלחתי להשלים: {result_msg}"
+            )
+            
+    except Exception as e:
+        print(f"❌ Error processing reaction: {e}")
+        import traceback
+        traceback.print_exc()
+
 def process_message_status(status):
     """Process message status update"""
     try:
@@ -397,6 +446,7 @@ def handle_basic_commands(user_id, text):
 • כתוב "המשימות שלי" או ? כדי לראות משימות ממתינות
 • כתוב "סטטיסטיקה" לנתוני ביצועים שלך
 • הגב עם 👍 כדי לסמן משימות כהושלמו
+• אפשר להקליט כדי ליצור משימות
 
 📅 **תאריכי יעד:**
 • "להתקשר לאמא מחר ב-15:00"
@@ -407,13 +457,18 @@ def handle_basic_commands(user_id, text):
 
 🔧 **פקודות:**
 • עזרה - הצג עזרה זו
-• המשימות שלי - הצג רשימת משימות
+• המשימות שלי \ ? - הצג רשימת משימות
+• פירוט - הצג כל משימה בנפרד (לתגובות 👍)
 • סטטיסטיקה - הצג נתונים
 • הושלמו - הצג משימות שהושלמו"""
     
     # Task list commands
     elif text_lower in ['tasks', 'my tasks', 'list', '/tasks', 'המשימות שלי', 'רשימה','משימות','?']:
         return handle_task_list_command(user_id)
+    
+    # NEW: Separate messages per task (for reactions)
+    elif text_lower in ['משימות מפורד', 'משימות נפרד', 'tasks separate', 'פרט משימות','פירוט']:
+        return handle_task_list_separate(user_id)
     
     elif text_lower in ['stats', 'statistics', '/stats', 'סטטיסטיקה']:
         return handle_stats_command(user_id)
@@ -440,6 +495,67 @@ def handle_task_list_command(user_id):
     except Exception as e:
         print(f"❌ Error getting task list: {e}")
         return "❌ שגיאה בשליפת המשימות. נסה שוב."
+
+def handle_task_list_separate(user_id):
+    """Send each task as separate message for emoji reactions"""
+    try:
+        from ..app import whatsapp_service
+        from ..models.database import User
+        
+        user = User.query.get(user_id)
+        tasks = task_service.get_user_tasks(user_id, status='pending', limit=20)
+        
+        if not tasks:
+            return "📋 אין לך משימות ממתינות!"
+        
+        # Send header
+        whatsapp_service.send_message(
+            user.phone_number,
+            f"📋 המשימות שלך ({len(tasks)}):\n💡 הגב עם 👍 על כל משימה להשלים אותה"
+        )
+        
+        # Send each task separately
+        for i, task in enumerate(tasks, 1):
+            msg = f"{i}. {task.description} [#{task.id}]"
+            
+            if task.due_date:
+                import pytz
+                israel_tz = pytz.timezone('Asia/Jerusalem')
+                local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(israel_tz)
+                msg += f"\n📅 {local_time.strftime('%d/%m %H:%M')}"
+            
+            result = whatsapp_service.send_message(user.phone_number, msg)
+            
+            # Store message ID mapping in Message table
+            if result.get('success') and 'response' in result:
+                messages = result['response'].get('messages', [])
+                if messages:
+                    msg_id = messages[0].get('id')
+                    if msg_id:
+                        save_task_message_mapping(user_id, msg_id, task.id)
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return "❌ שגיאה בשליפת המשימות"
+
+def save_task_message_mapping(user_id, whatsapp_message_id, task_id):
+    """Store mapping between WhatsApp message and task ID"""
+    try:
+        from ..models.database import Message, db
+        
+        # Use Message table to store the mapping
+        mapping = Message(
+            user_id=user_id,
+            message_type='task_reference',
+            whatsapp_message_id=whatsapp_message_id
+        )
+        mapping.content = str(task_id)  # Store task ID
+        db.session.add(mapping)
+        db.session.commit()
+    except Exception as e:
+        print(f"Error saving message mapping: {e}")
 
 def handle_stats_command(user_id):
     """Handle stats command"""
