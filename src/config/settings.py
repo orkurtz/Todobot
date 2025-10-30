@@ -17,7 +17,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # WhatsApp API settings
-    WHATSAPP_API_URL = "https://graph.facebook.com/v20.0/456933577513253/messages"
+    WHATSAPP_API_URL = "https://graph.facebook.com/v22.0/928083353711261/messages"
     WHATSAPP_TOKEN = os.getenv('WHATSAPP_TOKEN')
     WEBHOOK_VERIFY_TOKEN = os.getenv('WEBHOOK_VERIFY_TOKEN', 'default_verify_token')
     
