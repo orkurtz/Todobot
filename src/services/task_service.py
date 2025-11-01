@@ -121,6 +121,7 @@ class TaskService:
             due_today = Task.query.filter(
                 Task.user_id == user_id,
                 Task.status == 'pending',
+                Task.is_recurring == False,  # Only show instances, not patterns
                 Task.due_date >= today_start,
                 Task.due_date < today_end
             ).count()
@@ -129,6 +130,7 @@ class TaskService:
             overdue = Task.query.filter(
                 Task.user_id == user_id,
                 Task.status == 'pending',
+                Task.is_recurring == False,  # Only show instances, not patterns
                 Task.due_date < datetime.utcnow()
             ).count()
             
@@ -342,6 +344,7 @@ class TaskService:
             
             tasks = Task.query.filter(
                 Task.status == 'pending',
+                Task.is_recurring == False,  # Only show instances, not patterns
                 Task.due_date.isnot(None),
                 Task.due_date >= now,
                 Task.due_date <= window_end,
@@ -1018,6 +1021,7 @@ class TaskService:
                              recurrence_end_date: datetime = None) -> Task:
         """Create a recurring task pattern"""
         import json
+        from sqlalchemy.exc import IntegrityError
         
         # Validate pattern
         valid_patterns = ['daily', 'weekly', 'specific_days', 'interval']
@@ -1040,7 +1044,55 @@ class TaskService:
         )
         
         db.session.add(task)
-        db.session.commit()
+        db.session.flush()  # Get task.id before commit
+        
+        # Check if we should generate first instance immediately
+        if due_date:
+            now_israel = datetime.now(self.israel_tz)
+            # Convert due_date to Israel timezone for comparison
+            if due_date.tzinfo:
+                due_israel = due_date.astimezone(self.israel_tz)
+            else:
+                # Assume UTC if no timezone
+                due_israel = due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+            
+            # If due_date is today or in the past, create first instance immediately
+            if due_israel.date() <= now_israel.date():
+                # Check if instance already exists for this date/time
+                existing = Task.query.filter(
+                    Task.parent_recurring_id == task.id,
+                    Task.due_date == due_date
+                ).first()
+                
+                if not existing:
+                    # Create instance with the current due_date (first occurrence)
+                    instance = Task(
+                        user_id=user_id,
+                        description=task.description,
+                        due_date=due_date,
+                        status='pending',
+                        is_recurring=False,
+                        parent_recurring_id=task.id
+                    )
+                    db.session.add(instance)
+                    task.recurring_instance_count += 1
+                    
+                    # Calculate and update pattern's due_date to NEXT occurrence
+                    next_due_date = self._calculate_next_due_date(task)
+                    if next_due_date:
+                        task.due_date = next_due_date
+                        print(f"✅ Generated first instance immediately for pattern {task.id}, next due: {next_due_date}")
+                    else:
+                        print(f"⚠️ Could not calculate next due date for pattern {task.id}")
+                else:
+                    print(f"⚠️ Instance already exists for pattern {task.id} at {due_date}")
+        
+        try:
+            db.session.commit()
+        except IntegrityError as e:
+            db.session.rollback()
+            print(f"❌ Integrity error creating recurring task: {e}")
+            raise
         
         print(f"✅ Created recurring task pattern for user {user_id}: {description[:50]}...")
         return task

@@ -197,10 +197,8 @@ class SchedulerService:
                 task_service = TaskService()
                 
                 # Get tasks that will be due in the next 30 minutes
+                # Note: get_due_tasks_for_reminders already filters out recurring patterns
                 due_tasks = task_service.get_due_tasks_for_reminders(time_window_minutes=30)
-                
-                # Filter out recurring patterns (only send reminders for instances or regular tasks)
-                due_tasks = [t for t in due_tasks if not t.is_recurring]
 
                 if len(due_tasks) == 0:
                     # print("No tasks due for reminders.") # Optional: Reduce log noise
@@ -305,6 +303,7 @@ class SchedulerService:
                         tasks_due_today = Task.query.filter(
                             Task.user_id == user.id,
                             Task.status == 'pending',
+                            Task.is_recurring == False,  # Only show instances, not patterns
                             Task.due_date >= today_start,
                             Task.due_date < today_end
                         ).order_by(Task.due_date.asc()).all()
@@ -313,6 +312,7 @@ class SchedulerService:
                         overdue_tasks = Task.query.filter(
                             Task.user_id == user.id,
                             Task.status == 'pending',
+                            Task.is_recurring == False,  # Only show instances, not patterns
                             Task.due_date < now,
                             Task.due_date.isnot(None)
                         ).order_by(Task.due_date.asc()).all()
@@ -400,6 +400,7 @@ class SchedulerService:
                         tasks_due_today = Task.query.filter(
                             Task.user_id == user.id,
                             Task.status == 'pending',
+                            Task.is_recurring == False,  # Only show instances, not patterns
                             Task.due_date >= today_start,
                             Task.due_date < today_end
                         ).order_by(Task.due_date.asc()).all()
