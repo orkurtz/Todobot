@@ -41,7 +41,8 @@ This project was originally created by **[buzaglo idan](https://github.com/buzag
 This repository represents a **complete refactor and significant enhancement** of the original project. While maintaining the core vision, we've added extensive features and improvements:
 
 #### 🆕 Major New Features
-- **🔄 Complete Recurring Tasks System**: Full support for daily, weekly, interval, and custom recurring patterns with automatic instance generation
+- **📅 Google Calendar Integration**: Full one-way sync from Bot to Google Calendar - tasks with due dates automatically create calendar events, updates sync in real-time, and completions mark events as done. Perfect for seeing your schedule in one place!
+- **🔄 Complete Recurring Tasks System**: Full support for daily, weekly, interval, and custom recurring patterns with automatic instance generation and calendar sync
 - **🎤 Voice Message Support**: Complete voice transcription and task extraction using Gemini 2.5 Flash multimodal API
 - **👍 Emoji Reaction Completion**: Intuitive task completion via WhatsApp emoji reactions
 - **📝 Task Rescheduling & Updates**: Full support for updating task descriptions and rescheduling due dates with natural language:
@@ -260,10 +261,74 @@ Bot: "🎤 שמעתי: 'תזכיר לי לקנות חלב מחר בשעה חמש
 - **Task History**: `"הושלמו"` → View recently completed tasks
 - **Completion Tracking**: Track your productivity over time
 
+### 📅 Google Calendar Integration
+
+Seamlessly sync your tasks to Google Calendar for a unified view of your schedule!
+
+#### How It Works
+
+1. **Connect Your Calendar**: Send `"חבר יומן"` or `"connect calendar"` to get an OAuth link
+2. **One-Click Authorization**: Click the link, authorize Google Calendar access
+3. **Automatic Sync**: All tasks with due dates automatically create calendar events
+4. **Real-Time Updates**: When you reschedule a task, the calendar event updates instantly
+5. **Smart Completion**: Completing a task marks the calendar event as done (✅)
+
+#### Features
+
+- **Automatic Event Creation**: Tasks with `due_date` → Calendar events automatically
+- **Default Duration**: Events are 1 hour long by default
+- **Real-Time Sync**: Updates and reschedules sync immediately
+- **Recurring Tasks Support**: Recurring instances also sync to calendar
+- **Secure Storage**: Google tokens encrypted at rest (AES-256)
+- **Auto-Refresh**: Tokens automatically refreshed - no re-authorization needed
+- **Non-Fatal Errors**: Calendar sync failures don't break task creation
+
+#### Usage Examples
+
+```
+You: "חבר יומן"
+Bot: [Sends OAuth link]
+[You click, authorize]
+Bot: "✅ היומן חובר בהצלחה!"
+
+You: "לקנות חלב מחר ב-15:00"
+Bot: "✅ נוצרה משימה: לקנות חלב (יעד: מחר 15:00)"
+[Calendar event created automatically! 📅]
+
+You: "דחה משימה 1 למחרתיים"
+Bot: "✅ משימה #1 עודכנה"
+[Calendar event rescheduled automatically! 📅]
+
+You: "סיימתי משימה 1"
+Bot: "✅ הושלמה משימה"
+[Calendar event marked as completed! ✅]
+
+You: "סטטוס יומן"
+Bot: "✅ היומן שלך מחובר!"
+```
+
+#### Calendar Commands
+
+| Command | Hebrew | English | Description |
+|---------|--------|---------|-------------|
+| **Connect Calendar** | `חבר יומן` | `connect calendar` | Get OAuth link to connect Google Calendar |
+| **Disconnect Calendar** | `נתק יומן` | `disconnect calendar` | Disconnect calendar integration |
+| **Calendar Status** | `סטטוס יומן` | `calendar status` | Check connection status |
+
+#### Technical Details
+
+- **OAuth 2.0 Flow**: Secure Google authorization via web page
+- **Token Management**: Access and refresh tokens encrypted and stored securely
+- **Timezone Handling**: All events use Israel timezone (Asia/Jerusalem)
+- **Event Metadata**: Task description, due date, and completion status synced
+- **Error Handling**: Calendar sync is non-fatal - tasks work even if sync fails
+- **Recurring Instances**: Each recurring task instance gets its own calendar event
+
 ### 🛡️ Security & Privacy
 
 - **AES-256 Encryption**: All user data encrypted at rest
 - **Phone Number Hashing**: Secure lookup without storing plaintext
+- **Google Tokens Encrypted**: Calendar OAuth tokens stored with AES-256 encryption
 - **No Data Mining**: Conversations are private and not analyzed
 - **GDPR Compliant**: Built with privacy regulations in mind
 
@@ -315,15 +380,19 @@ Bot: "🎤 שמעתי: 'תזכיר לי לקנות חלב מחר בשעה חמש
 │  • Creates/updates/deletes tasks                        │
 │  • Handles recurring task patterns                      │
 │  • Manages task lifecycle                               │
+│  • Syncs to Google Calendar (if enabled)               │
 └────────────────────┬──────────────────────────────────┘
                      │
-                     v
-┌─────────────────────────────────────────────────────────┐
-│              PostgreSQL Database                         │
-│  • Tasks stored with encryption                         │
-│  • User data secured (AES-256)                          │
-│  • Recurring patterns & instances                       │
-└────────────────────┬──────────────────────────────────┘
+                     ├──────────────────────┐
+                     │                      │
+                     v                      v
+┌──────────────────────────────────┐  ┌─────────────────────────────────────────┐
+│      Google Calendar API              │  │      PostgreSQL Database             │
+│  • OAuth 2.0 authentication          │  │  • Tasks stored with encryption       │
+│  • Create/update/delete events       │  │  • User data secured (AES-256)        │
+│  • Mark events as completed          │  │  • Calendar tokens encrypted          │
+│  • Automatic token refresh           │  │  • Recurring patterns & instances    │
+└──────────────────────────────────┘  └─────────────────────────────────────────┘
                      │
                      v
 ┌─────────────────────────────────────────────────────────┐
@@ -449,12 +518,51 @@ WEBHOOK_VERIFY_TOKEN=your-webhook-verify-token
 # Google Gemini AI
 GEMINI_API_KEY=your-gemini-api-key
 
+# Google Calendar Integration (Optional)
+BASE_URL=https://your-app.up.railway.app
+GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+
 # Redis (Optional but recommended)
 REDIS_URL=redis://localhost:6379
 
 # Encryption
 ENCRYPTION_KEY=your-base64-encryption-key
 ```
+
+#### Google Calendar Setup
+
+To enable calendar integration:
+
+1. **Create Google Cloud Project**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select existing
+
+2. **Enable Calendar API**:
+   - Navigate to "APIs & Services" → "Library"
+   - Search for "Google Calendar API" and enable it
+
+3. **Configure OAuth Consent Screen**:
+   - Go to "APIs & Services" → "OAuth consent screen"
+   - Fill in app information
+   - Add scopes: `calendar.events`, `calendar`
+
+4. **Create OAuth Credentials**:
+   - Go to "APIs & Services" → "Credentials"
+   - Create "OAuth 2.0 Client ID" (Web application)
+   - Add authorized redirect URI: `https://your-app.up.railway.app/calendar/oauth/callback`
+   - Copy Client ID and Client Secret
+
+5. **Set Environment Variables**:
+   - `BASE_URL`: Your Railway/app URL (e.g., `https://todobot.up.railway.app`)
+   - `GOOGLE_CLIENT_ID`: Your OAuth Client ID
+   - `GOOGLE_CLIENT_SECRET`: Your OAuth Client Secret
+
+6. **Deploy and Test**:
+   - Deploy application with new environment variables
+   - Send `"חבר יומן"` to bot
+   - Authorize calendar access
+   - Create a task with due date - should appear in Google Calendar!
 
 ---
 
@@ -470,6 +578,9 @@ ENCRYPTION_KEY=your-base64-encryption-key
 | **Statistics** | `סטטיסטיקה` | `stats` | View productivity stats |
 | **Completed** | `הושלמו` | `completed` | View completed tasks |
 | **Recurring** | `משימות חוזרות` | `recurring tasks` | View active recurring patterns |
+| **Connect Calendar** | `חבר יומן` | `connect calendar` | Connect Google Calendar |
+| **Disconnect Calendar** | `נתק יומן` | `disconnect calendar` | Disconnect calendar |
+| **Calendar Status** | `סטטוס יומן` | `calendar status` | Check calendar connection |
 
 ### Creating Tasks
 
@@ -596,6 +707,7 @@ Todobot/
 │   │   ├── ai_service.py           # Google Gemini integration (text + voice)
 │   │   ├── whatsapp_service.py     # WhatsApp API client
 │   │   ├── task_service.py         # Task CRUD + recurring logic
+│   │   ├── calendar_service.py     # Google Calendar integration (OAuth + sync)
 │   │   ├── encryption.py           # AES-256 encryption service
 │   │   ├── scheduler_service.py    # Background jobs (reminders, summaries)
 │   │   └── monitoring_service.py   # System health monitoring
@@ -606,6 +718,7 @@ Todobot/
 │   │   └── validation.py           # Input validation & sanitization
 │   ├── routes/              # Flask routes
 │   │   ├── webhook.py      # WhatsApp webhook (text, voice, reactions)
+│   │   ├── calendar_routes.py  # Calendar OAuth & management routes
 │   │   ├── admin.py        # Admin dashboard
 │   │   └── api.py          # REST API endpoints
 │   ├── config/             # Configuration
@@ -626,10 +739,16 @@ Todobot/
 ### Railway (Recommended)
 
 1. Connect GitHub repository to Railway
-2. Add environment variables in Railway dashboard
+2. Add environment variables in Railway dashboard:
+   - **Required**: Database, WhatsApp, Gemini API keys
+   - **Calendar Integration**: `BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (optional)
 3. Deploy automatically with `git push`
 4. Enable Redis add-on for rate limiting
 5. Ensure worker process is running separately (for scheduler)
+6. **For Calendar Integration**: 
+   - After deployment, get your Railway app URL
+   - Update `BASE_URL` in Railway environment variables
+   - Add redirect URI in Google Cloud Console: `https://your-app.up.railway.app/calendar/oauth/callback`
 
 ### Docker
 
@@ -728,6 +847,14 @@ Access at `/admin/dashboard`:
    - Verify worker process is running
    - Check Redis connection (if using)
    - Review scheduler logs
+
+4. **Calendar integration not working**
+   - Verify `BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` are set
+   - Check Google Calendar API is enabled in Google Cloud Console
+   - Ensure redirect URI matches exactly in Google Cloud Console
+   - Verify user has connected calendar: send `"סטטוס יומן"`
+   - Check Railway logs for calendar sync errors
+   - Reconnect calendar if tokens expired: send `"חבר יומן"` again
 
 ---
 
