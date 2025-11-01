@@ -465,6 +465,12 @@ class SchedulerService:
                 if not current_task:
                     print(f"Task {task.id} not found in DB - skipping reminder.")
                     return
+                
+                # Check if task is still pending (may have been completed/cancelled)
+                if current_task.status != 'pending':
+                    print(f"Task {task.id} is not pending (status: {current_task.status}) - skipping reminder.")
+                    return
+                
                 # Check reminder_sent status again within the lock
                 if current_task.reminder_sent:
                     print(f"Task {task.id} was already reminded by another process - skipping.")

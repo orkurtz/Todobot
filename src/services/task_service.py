@@ -65,6 +65,10 @@ class TaskService:
             if not task:
                 return False, "❌ המשימה לא נמצאה או שאינה שייכת לך"
             
+            # Prevent completing recurring patterns directly
+            if task.is_recurring:
+                return False, "❌ לא ניתן להשלים תבנית חוזרת ישירות. השתמש ב'השלם סדרה [מספר]' כדי להשלים את כל הסדרה."
+            
             if task.status == 'completed':
                 return False, "❌ המשימה כבר הושלמה"
             
@@ -89,6 +93,10 @@ class TaskService:
             
             if not task:
                 return False, "❌ המשימה לא נמצאה או שאינה שייכת לך"
+            
+            # Prevent deleting recurring patterns directly
+            if task.is_recurring:
+                return False, "❌ לא ניתן למחוק תבנית חוזרת ישירות. השתמש ב'עצור סדרה [מספר]' כדי לעצור את הסדרה."
             
             task_desc = task.description[:50]
             db.session.delete(task)
@@ -378,6 +386,10 @@ class TaskService:
             
             if not task:
                 return False, "❌ לא מצאתי את המשימה הזו. אולי כבר נמחקה?"
+            
+            # Prevent updating recurring patterns directly (should use update_recurring_pattern instead)
+            if task.is_recurring:
+                return False, "❌ לא ניתן לעדכן תבנית חוזרת דרך עדכון רגיל. השתמש בפקודת עדכון תבנית או עדכן מופעים ספציפיים."
             
             if task.status == 'completed':
                 return False, "❌ לא ניתן לעדכן משימה שכבר הושלמה. תמחק אותה ותיצור משימה חדשה במקום."
@@ -1159,7 +1171,8 @@ class TaskService:
         db.session.add(instance)
         
         # Update pattern
-        pattern_task.recurring_instance_count += 1
+        # Adjust instance count: increment for new instance, decrement for deleted old instances
+        pattern_task.recurring_instance_count = max(0, pattern_task.recurring_instance_count - deleted_count) + 1
         pattern_task.due_date = next_due_date  # Update pattern's due_date to next occurrence
         
         try:
@@ -1347,7 +1360,13 @@ class TaskService:
 
             old_description = pattern.description
             old_due = pattern.due_date
-            old_time_tuple = (old_due.hour, old_due.minute) if old_due else None
+            # Safely extract time tuple, handling None case
+            old_time_tuple = None
+            if old_due:
+                try:
+                    old_time_tuple = (old_due.hour, old_due.minute)
+                except AttributeError:
+                    old_time_tuple = None
 
             # Extract fields
             new_description = task_data.get('new_description')
@@ -1397,7 +1416,13 @@ class TaskService:
             db.session.commit()
 
             # Determine if time-of-day changed
-            new_time_tuple = (pattern.due_date.hour, pattern.due_date.minute) if pattern.due_date else None
+            # Safely extract time tuple, handling None case
+            new_time_tuple = None
+            if pattern.due_date:
+                try:
+                    new_time_tuple = (pattern.due_date.hour, pattern.due_date.minute)
+                except AttributeError:
+                    new_time_tuple = None
             time_changed = old_time_tuple != new_time_tuple
 
             # Propagate to future pending instances
