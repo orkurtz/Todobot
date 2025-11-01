@@ -54,6 +54,12 @@ This repository represents a **complete refactor and significant enhancement** o
   - 3x daily proactive reminders (11 AM, 3 PM, 7 PM)
   - Smart daily summaries at 9 AM
   - Status validation to prevent reminders for completed tasks
+- **🔍 Natural Language Query System**: Real-time task queries and searches with natural language:
+  - Ask "מתי הפגישה עם יוחנן?" → Bot searches and returns task with due date
+  - Ask "כמה משימות יש לי?" → Returns task count
+  - Ask "מה המצב?" → Returns productivity statistics
+  - Smart description search: Finds tasks by keywords naturally
+  - Supports both Hebrew and English queries
 
 #### 🔧 Code Improvements
 - **Complete Architecture Refactoring**: Restructured codebase for maintainability and scalability
