@@ -1130,6 +1130,22 @@ class TaskService:
             print(f"⚠️ Instance already exists for {next_due_date}")
             return existing
         
+        # Delete old incomplete instances before creating new one
+        # For daily: Delete all old pending instances
+        # For non-daily: Delete all old pending instances (they stay until new one is created)
+        old_pending_instances = Task.query.filter(
+            Task.parent_recurring_id == pattern_task.id,
+            Task.status == 'pending',
+            Task.due_date < next_due_date
+        ).all()
+        
+        deleted_count = 0
+        if old_pending_instances:
+            for old_instance in old_pending_instances:
+                db.session.delete(old_instance)
+                deleted_count += 1
+            print(f"🗑️ Deleted {deleted_count} old incomplete instance(s) for pattern {pattern_task.id}")
+        
         # Create new instance
         instance = Task(
             user_id=pattern_task.user_id,
@@ -1148,6 +1164,11 @@ class TaskService:
         
         try:
             db.session.commit()
+            if deleted_count > 0:
+                print(f"✅ Deleted {deleted_count} old instance(s) and created new instance {instance.id} for pattern {pattern_task.id}")
+            else:
+                print(f"✅ Generated recurring instance {instance.id} from pattern {pattern_task.id}")
+            return instance
         except IntegrityError:
             db.session.rollback()
             print(f"⚠️ Duplicate prevented for pattern {pattern_task.id} at {next_due_date}")
@@ -1156,9 +1177,6 @@ class TaskService:
                 Task.due_date == next_due_date
             ).first()
             return existing
-        
-        print(f"✅ Generated recurring instance {instance.id} from pattern {pattern_task.id}")
-        return instance
     
     def _calculate_next_due_date(self, pattern_task: Task) -> Optional[datetime]:
         """Calculate the next due date for a recurring pattern"""
