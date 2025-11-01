@@ -13,6 +13,7 @@ from .services.whatsapp_service import WhatsAppService
 from .services.task_service import TaskService
 from .services.scheduler_service import SchedulerService
 from .services.monitoring_service import MonitoringService
+from .services.calendar_service import CalendarService
 
 # Process role: 'web' by default; worker process will override this value in code
 PROCESS_ROLE = 'web'
@@ -49,8 +50,9 @@ def create_app(config_name=None):
     global ai_service, whatsapp_service, task_service, scheduler_service, monitoring_service
     try:
         ai_service = AIService(redis_client=redis_client)
-        whatsapp_service = WhatsAppService(redis_client=redis_client) 
-        task_service = TaskService()
+        whatsapp_service = WhatsAppService(redis_client=redis_client)
+        calendar_service = CalendarService()
+        task_service = TaskService(calendar_service=calendar_service)
         
         # Initialize monitoring service
         monitoring_service = MonitoringService(
@@ -78,10 +80,11 @@ def create_app(config_name=None):
         monitoring_service = None
     
     # Register blueprints
-    from .routes import webhook, admin, api
+    from .routes import webhook, admin, api, calendar_routes
     app.register_blueprint(webhook.bp)
     app.register_blueprint(admin.bp)
     app.register_blueprint(api.bp)
+    app.register_blueprint(calendar_routes.bp)
     
     # Register error handlers
     @app.errorhandler(404)

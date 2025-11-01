@@ -39,6 +39,17 @@ class Config:
     # Monitoring
     ADMIN_PHONE_NUMBERS = ["972542607800"]  # Add admin phone numbers here
     
+    # Google Calendar OAuth settings
+    BASE_URL = os.getenv('BASE_URL', '')  # Railway app URL
+    GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+    GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+    GOOGLE_REDIRECT_URI = f"{os.getenv('BASE_URL', '')}/calendar/oauth/callback" if os.getenv('BASE_URL') else None
+    GOOGLE_CALENDAR_SCOPES = [
+        'https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/calendar'
+    ]
+    CALENDAR_DEFAULT_EVENT_DURATION_MINUTES = 60
+    
     @classmethod
     def init_redis(cls) -> tuple[Optional[redis.Redis], bool]:
         """Initialize Redis connection"""

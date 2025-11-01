@@ -17,6 +17,13 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_active = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # Calendar integration fields
+    google_calendar_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    google_access_token_encrypted = db.Column(db.Text, nullable=True)
+    google_refresh_token_encrypted = db.Column(db.Text, nullable=True)
+    google_token_expiry = db.Column(db.DateTime, nullable=True)
+    google_calendar_id = db.Column(db.String(255), nullable=True)  # Default calendar ID
+    
     @property
     def phone_number(self):
         """Decrypt and return phone number"""
@@ -29,6 +36,40 @@ class User(db.Model):
         from ..services.encryption import encryption_service
         self.phone_number_encrypted = encryption_service.encrypt_data(value)
         self.phone_number_hash = encryption_service.hash_for_search(value)
+    
+    @property
+    def google_access_token(self):
+        """Decrypt and return Google access token"""
+        from ..services.encryption import encryption_service
+        if self.google_access_token_encrypted:
+            return encryption_service.decrypt_data(self.google_access_token_encrypted)
+        return None
+    
+    @google_access_token.setter
+    def google_access_token(self, value):
+        """Encrypt and store Google access token"""
+        from ..services.encryption import encryption_service
+        if value:
+            self.google_access_token_encrypted = encryption_service.encrypt_data(value)
+        else:
+            self.google_access_token_encrypted = None
+    
+    @property
+    def google_refresh_token(self):
+        """Decrypt and return Google refresh token"""
+        from ..services.encryption import encryption_service
+        if self.google_refresh_token_encrypted:
+            return encryption_service.decrypt_data(self.google_refresh_token_encrypted)
+        return None
+    
+    @google_refresh_token.setter
+    def google_refresh_token(self, value):
+        """Encrypt and store Google refresh token"""
+        from ..services.encryption import encryption_service
+        if value:
+            self.google_refresh_token_encrypted = encryption_service.encrypt_data(value)
+        else:
+            self.google_refresh_token_encrypted = None
     
     # Optimized relationships with lazy loading options
     messages = db.relationship('Message', backref='user', lazy='dynamic', cascade='all, delete-orphan')
@@ -117,6 +158,11 @@ class Task(db.Model):
     recurring_instance_count = db.Column(db.Integer, default=0)
     recurring_max_instances = db.Column(db.Integer, default=100)
     
+    # Calendar sync fields
+    calendar_event_id = db.Column(db.String(255), nullable=True)
+    calendar_synced = db.Column(db.Boolean, default=False, nullable=False)
+    calendar_sync_error = db.Column(db.Text, nullable=True)
+    
     # Recurring relationship (self-referential)
     recurring_instances = db.relationship('Task',
         backref=db.backref('parent_pattern', remote_side=[id]),
@@ -133,6 +179,7 @@ class Task(db.Model):
         db.Index('idx_task_created', 'created_at'),
         db.Index('idx_task_is_recurring', 'is_recurring'),
         db.Index('idx_task_parent_recurring', 'parent_recurring_id'),
+        db.Index('idx_task_calendar_event', 'calendar_event_id'),
     )
     
     def is_recurring_pattern(self):

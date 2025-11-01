@@ -499,6 +499,16 @@ def handle_basic_commands(user_id, text):
     elif text_lower in ['recurring', 'recurring tasks', 'משימות קבועות', 'משימות חוזרות', 'סדרות']:
         return handle_recurring_patterns_command(user_id)
     
+    # Calendar integration commands
+    elif any(cmd in text_lower for cmd in ['חבר יומן', 'חיבור יומן', 'connect calendar', 'link calendar']):
+        return handle_calendar_connect_command(user_id)
+    
+    elif any(cmd in text_lower for cmd in ['נתק יומן', 'disconnect calendar', 'ניתוק יומן']):
+        return handle_calendar_disconnect_command(user_id)
+    
+    elif any(cmd in text_lower for cmd in ['סטטוס יומן', 'calendar status', 'מצב יומן']):
+        return handle_calendar_status_command(user_id)
+    
     return None
 
 def handle_task_list_command(user_id):
@@ -644,6 +654,80 @@ def handle_recurring_patterns_command(user_id):
     except Exception as e:
         print(f"❌ Error: {e}")
         return "❌ שגיאה בשליפת משימות חוזרות"
+
+def handle_calendar_connect_command(user_id):
+    """Handle calendar connect command"""
+    try:
+        from ..config.settings import Config
+        from ..models.database import User
+        
+        user = User.query.get(user_id)
+        if not user:
+            return "❌ שגיאה: משתמש לא נמצא"
+        
+        base_url = Config.BASE_URL
+        if not base_url:
+            return "❌ שגיאה: BASE_URL לא מוגדר. אנא פנה לתמיכה."
+        
+        connect_url = f"{base_url}/calendar/connect/{user_id}"
+        
+        response = f"""📅 חיבור ליומן Google Calendar
+
+לחץ על הקישור הבא כדי לחבר את היומן שלך:
+{connect_url}
+
+לאחר החיבור, כל משימה עם תאריך יעד תתווסף 
+אוטומטית ליומן שלך! ✨"""
+        
+        return response
+        
+    except Exception as e:
+        print(f"❌ Error handling calendar connect: {e}")
+        return "❌ שגיאה ביצירת קישור החיבור. נסה שוב מאוחר יותר."
+
+def handle_calendar_disconnect_command(user_id):
+    """Handle calendar disconnect command"""
+    try:
+        from ..services.calendar_service import CalendarService
+        
+        calendar_service = CalendarService()
+        success, message = calendar_service.disconnect_calendar(user_id)
+        
+        if success:
+            return f"✅ {message}"
+        else:
+            return f"❌ {message}"
+            
+    except Exception as e:
+        print(f"❌ Error handling calendar disconnect: {e}")
+        return "❌ שגיאה בניתוק היומן. נסה שוב מאוחר יותר."
+
+def handle_calendar_status_command(user_id):
+    """Handle calendar status command"""
+    try:
+        from ..models.database import User
+        
+        user = User.query.get(user_id)
+        if not user:
+            return "❌ שגיאה: משתמש לא נמצא"
+        
+        if user.google_calendar_enabled:
+            calendar_info = user.google_calendar_id or 'primary'
+            return f"""✅ היומן שלך מחובר!
+
+📅 Calendar ID: {calendar_info}
+
+כל משימה עם תאריך יעד מתווספת אוטומטית ליומן.
+כדי לנתק, כתוב 'נתק יומן'."""
+        else:
+            return """❌ היומן שלך לא מחובר.
+
+כתוב 'חבר יומן' כדי לחבר את Google Calendar שלך.
+לאחר החיבור, כל משימה עם תאריך יעד תתווסף אוטומטית ליומן! ✨"""
+            
+    except Exception as e:
+        print(f"❌ Error handling calendar status: {e}")
+        return "❌ שגיאה בבדיקת סטטוס היומן. נסה שוב מאוחר יותר."
 
 def handle_button_click(user_id, button_id):
     """Handle button click"""

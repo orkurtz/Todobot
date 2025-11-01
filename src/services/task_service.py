@@ -13,8 +13,9 @@ from ..models.database import db, Task, User
 class TaskService:
     """Handle task-related operations"""
     
-    def __init__(self):
+    def __init__(self, calendar_service=None):
         self.israel_tz = pytz.timezone('Asia/Jerusalem')
+        self.calendar_service = calendar_service  # Optional calendar service for sync
     
     def create_task(self, user_id: int, description: str, due_date: datetime = None) -> Task:
         """Create a new task for user"""
@@ -30,6 +31,18 @@ class TaskService:
             db.session.commit()
             
             print(f"✅ Created task for user {user_id}: {description[:50]}...")
+            
+            # Sync to calendar if enabled and has due date
+            if self.calendar_service and due_date:
+                try:
+                    success, event_id, error = self.calendar_service.create_calendar_event(task)
+                    if success:
+                        print(f"📅 Synced task {task.id} to calendar: {event_id}")
+                    elif error:
+                        print(f"⚠️ Failed to sync to calendar: {error}")
+                except Exception as e:
+                    print(f"⚠️ Calendar sync error (non-fatal): {e}")
+            
             return task
             
         except Exception as e:
@@ -78,6 +91,15 @@ class TaskService:
             
             db.session.commit()
             
+            # Mark calendar event as completed if exists
+            if self.calendar_service and task.calendar_event_id:
+                try:
+                    success, error = self.calendar_service.mark_event_completed(task)
+                    if not success:
+                        print(f"⚠️ Failed to update calendar: {error}")
+                except Exception as e:
+                    print(f"⚠️ Calendar sync error (non-fatal): {e}")
+            
             print(f"✅ Task {task_id} completed by user {user_id}")
             return True, f"Task completed: {task.description[:50]}..."
             
@@ -99,6 +121,16 @@ class TaskService:
                 return False, "❌ לא ניתן למחוק תבנית חוזרת ישירות. השתמש ב'עצור סדרה [מספר]' כדי לעצור את הסדרה."
             
             task_desc = task.description[:50]
+            
+            # Delete calendar event first if exists
+            if self.calendar_service and task.calendar_event_id:
+                try:
+                    success, error = self.calendar_service.delete_calendar_event(task)
+                    if not success:
+                        print(f"⚠️ Failed to delete calendar event: {error}")
+                except Exception as e:
+                    print(f"⚠️ Calendar sync error (non-fatal): {e}")
+            
             db.session.delete(task)
             db.session.commit()
             
@@ -408,6 +440,25 @@ class TaskService:
             
             task.updated_at = datetime.utcnow()
             db.session.commit()
+            
+            # Update calendar event if exists
+            if self.calendar_service and task.calendar_event_id:
+                try:
+                    success, error = self.calendar_service.update_calendar_event(task)
+                    if not success:
+                        print(f"⚠️ Failed to update calendar: {error}")
+                except Exception as e:
+                    print(f"⚠️ Calendar sync error (non-fatal): {e}")
+            # Create calendar event if due date was just added
+            elif self.calendar_service and new_due_date and not old_due_date:
+                try:
+                    success, event_id, error = self.calendar_service.create_calendar_event(task)
+                    if success:
+                        print(f"📅 Created calendar event for updated task")
+                    elif error:
+                        print(f"⚠️ Failed to create calendar event: {error}")
+                except Exception as e:
+                    print(f"⚠️ Calendar sync error (non-fatal): {e}")
             
             # Build confirmation message in Hebrew
             changes = []
