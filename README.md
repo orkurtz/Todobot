@@ -44,6 +44,11 @@ This repository represents a **complete refactor and significant enhancement** o
 - **🔄 Complete Recurring Tasks System**: Full support for daily, weekly, interval, and custom recurring patterns with automatic instance generation
 - **🎤 Voice Message Support**: Complete voice transcription and task extraction using Gemini 2.5 Flash multimodal API
 - **👍 Emoji Reaction Completion**: Intuitive task completion via WhatsApp emoji reactions
+- **📝 Task Rescheduling & Updates**: Full support for updating task descriptions and rescheduling due dates with natural language:
+  - Update task descriptions: "שנה משימה 2 להתקשר לרופא" or "change task 3 to call dentist"
+  - Reschedule tasks: "דחה משימה 1 למחר" or "העבר משימה 3 בעוד שעתיים"
+  - Flexible syntax: Supports Hebrew and English with various word orders
+  - Natural language date parsing: Works with "מחר", "בעוד שעתיים", "31/10 בשעה 14:30", etc.
 - **🔔 Enhanced Reminder System**: 
   - 30-minute advance warnings before due time
   - 3x daily proactive reminders (11 AM, 3 PM, 7 PM)
