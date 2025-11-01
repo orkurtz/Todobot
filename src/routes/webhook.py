@@ -10,11 +10,10 @@ from datetime import datetime
 
 from ..models.database import db, User, Message, Task
 from ..services.encryption import encryption_service
-from ..services.task_service import TaskService
 from ..utils.validation import InputValidator
 
 bp = Blueprint('webhook', __name__)
-task_service = TaskService()
+# task_service will be imported from app.py when needed
 
 def get_or_create_user(phone_number):
     """Get existing user or create new one"""
@@ -177,6 +176,7 @@ def process_incoming_message(message, value):
 def process_text_message(message, user, whatsapp_service, ai_service):
     """Process text message"""
     try:
+        from ..app import task_service
         text_body = message['text']['body']
         from_number = user.phone_number
         
@@ -255,7 +255,7 @@ def process_text_message(message, user, whatsapp_service, ai_service):
 def process_voice_message(message, user, whatsapp_service, ai_service):
     """Process voice message using Gemini multimodal API"""
     try:
-        from ..app import ai_service
+        from ..app import ai_service, task_service
         from ..utils.media_handler import media_handler
         
         # Get audio details from message
@@ -378,6 +378,7 @@ def process_interactive_message(message, user, whatsapp_service):
 def process_reaction_message(message, user, whatsapp_service):
     """Process emoji reaction to complete tasks"""
     try:
+        from ..app import task_service
         from ..models.database import Message, Task, db
         
         reaction = message.get('reaction', {})
@@ -514,6 +515,7 @@ def handle_basic_commands(user_id, text):
 def handle_task_list_command(user_id):
     """Handle task list command"""
     try:
+        from ..app import task_service
         tasks = task_service.get_user_tasks(user_id, status='pending', limit=20)
         
         if not tasks:
@@ -532,7 +534,7 @@ def handle_task_list_command(user_id):
 def handle_task_list_separate(user_id):
     """Send each task as separate message for emoji reactions"""
     try:
-        from ..app import whatsapp_service
+        from ..app import whatsapp_service, task_service
         from ..models.database import User
         
         user = User.query.get(user_id)
@@ -593,6 +595,7 @@ def save_task_message_mapping(user_id, whatsapp_message_id, task_id):
 def handle_stats_command(user_id):
     """Handle stats command"""
     try:
+        from ..app import task_service
         stats = task_service.get_task_stats(user_id)
         
         return f"""📊 **הסטטיסטיקות שלך:**
@@ -613,6 +616,7 @@ def handle_stats_command(user_id):
 def handle_completed_tasks_command(user_id):
     """Handle completed tasks command"""
     try:
+        from ..app import task_service
         tasks = task_service.get_user_tasks(user_id, status='completed', limit=10, include_patterns_when_completed=True)
         
         if not tasks:
@@ -631,6 +635,7 @@ def handle_completed_tasks_command(user_id):
 def handle_recurring_patterns_command(user_id):
     """Show active recurring patterns"""
     try:
+        from ..app import task_service
         patterns = task_service.get_recurring_patterns(user_id, active_only=True)
         
         if not patterns:
