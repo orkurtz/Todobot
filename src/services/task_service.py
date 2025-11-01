@@ -1005,7 +1005,7 @@ class TaskService:
             
             # Status/statistics queries
             elif any(word in query_lower for word in ['מה המצב', 'status', 'statistics', 'סטטיסטיקה']):
-                stats = self.get_user_stats(user_id)
+                stats = self.get_task_stats(user_id)
                 return f"📊 סטטיסטיקה:\n• משימות פתוחות: {stats['pending']}\n• הושלמו: {stats['completed']}\n• סה\"כ: {stats['total']}"
             
             # List queries - "what tasks", "מה המשימות"
