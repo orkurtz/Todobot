@@ -639,8 +639,11 @@ class SchedulerService:
             with app.app_context():
                 from ..models.database import Task, db
                 from ..services.task_service import TaskService
+                from ..services.calendar_service import CalendarService
                 
-                task_service = TaskService()
+                # Use TaskService with calendar_service for calendar sync
+                calendar_service = CalendarService()
+                task_service = TaskService(calendar_service=calendar_service)
                 
                 # Get all active recurring patterns
                 recurring_patterns = Task.query.filter(

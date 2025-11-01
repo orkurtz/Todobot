@@ -1147,6 +1147,19 @@ class TaskService:
                         print(f"✅ Generated first instance immediately for pattern {task.id}, next due: {next_due_date}")
                     else:
                         print(f"⚠️ Could not calculate next due date for pattern {task.id}")
+                    
+                    # Sync first instance to calendar if enabled and has due_date
+                    if self.calendar_service and due_date:
+                        try:
+                            # Flush to get instance.id before committing
+                            db.session.flush()
+                            success, event_id, error = self.calendar_service.create_calendar_event(instance)
+                            if success:
+                                print(f"📅 Synced first recurring instance {instance.id} to calendar: {event_id}")
+                            elif error:
+                                print(f"⚠️ Failed to sync first instance to calendar: {error}")
+                        except Exception as e:
+                            print(f"⚠️ Calendar sync error for first instance (non-fatal): {e}")
                 else:
                     print(f"⚠️ Instance already exists for pattern {task.id} at {due_date}")
         
@@ -1205,6 +1218,17 @@ class TaskService:
         deleted_count = 0
         if old_pending_instances:
             for old_instance in old_pending_instances:
+                # Delete calendar event for old instance if exists
+                if self.calendar_service and old_instance.calendar_event_id:
+                    try:
+                        success, error = self.calendar_service.delete_calendar_event(old_instance)
+                        if success:
+                            print(f"🗑️ Deleted calendar event for old instance {old_instance.id}")
+                        elif error:
+                            print(f"⚠️ Failed to delete calendar event for old instance: {error}")
+                    except Exception as e:
+                        print(f"⚠️ Calendar sync error deleting old instance event (non-fatal): {e}")
+                
                 db.session.delete(old_instance)
                 deleted_count += 1
             print(f"🗑️ Deleted {deleted_count} old incomplete instance(s) for pattern {pattern_task.id}")
@@ -1225,6 +1249,19 @@ class TaskService:
         # Adjust instance count: increment for new instance, decrement for deleted old instances
         pattern_task.recurring_instance_count = max(0, pattern_task.recurring_instance_count - deleted_count) + 1
         pattern_task.due_date = next_due_date  # Update pattern's due_date to next occurrence
+        
+        # Sync instance to calendar if enabled and has due_date
+        # Do this before commit but after flush to get instance.id
+        if self.calendar_service and next_due_date:
+            try:
+                db.session.flush()  # Get instance.id before committing
+                success, event_id, error = self.calendar_service.create_calendar_event(instance)
+                if success:
+                    print(f"📅 Synced recurring instance {instance.id} to calendar: {event_id}")
+                elif error:
+                    print(f"⚠️ Failed to sync instance to calendar: {error}")
+            except Exception as e:
+                print(f"⚠️ Calendar sync error for instance (non-fatal): {e}")
         
         try:
             db.session.commit()
@@ -1311,10 +1348,30 @@ class TaskService:
             
             # Delete all future pending instances
             if delete_instances:
+                # Get instances first to delete their calendar events
+                future_instances = Task.query.filter(
+                    Task.parent_recurring_id == pattern_task_id,
+                    Task.status == 'pending'
+                ).all()
+                
+                # Delete calendar events for instances
+                if self.calendar_service:
+                    for instance in future_instances:
+                        if instance.calendar_event_id:
+                            try:
+                                success, error = self.calendar_service.delete_calendar_event(instance)
+                                if success:
+                                    print(f"🗑️ Deleted calendar event for stopped instance {instance.id}")
+                                elif error:
+                                    print(f"⚠️ Failed to delete calendar event for instance {instance.id}: {error}")
+                            except Exception as e:
+                                print(f"⚠️ Calendar sync error deleting instance event (non-fatal): {e}")
+                
+                # Now bulk delete the instances
                 deleted_count = Task.query.filter(
                     Task.parent_recurring_id == pattern_task_id,
                     Task.status == 'pending'
-                ).delete()
+                ).delete(synchronize_session=False)
                 
                 db.session.commit()
                 
