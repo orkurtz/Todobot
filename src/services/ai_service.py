@@ -232,8 +232,15 @@ Important:
 Message to analyze: {message}"""
         }
     
-    def get_response(self, user_id: int, user_message: str, conversation_history: List = None) -> str:
-        """Get AI response from Gemini"""
+    def get_response(self, user_id: int, user_message: str, conversation_history: List = None, query_results: str = None) -> str:
+        """Get AI response from Gemini
+        
+        Args:
+            user_id: User ID
+            user_message: User's message
+            conversation_history: Previous conversation messages
+            query_results: Optional database query results to provide context
+        """
         # Check rate limiting
         allowed, error_msg = self.rate_limiter.is_allowed()
         if not allowed:
@@ -257,7 +264,16 @@ Message to analyze: {message}"""
             full_prompt = f"{self.prompts['system']}\n\n"
             if context_messages:
                 full_prompt += "Recent conversation:\n" + "\n".join(context_messages) + "\n\n"
-            full_prompt += f"User message: {user_message}\n\nPlease respond helpfully:"
+            
+            # If query results provided, include them so AI knows what database returned
+            if query_results:
+                full_prompt += f"Database query results:\n{query_results}\n\n"
+                full_prompt += f"User message: {user_message}\n\n"
+                full_prompt += "Based on the database query results above, generate a natural, helpful response. "
+                full_prompt += "Acknowledge the tasks found (or confirm if none found) in a friendly way. "
+                full_prompt += "Keep it concise (1-2 sentences). The task list will be shown below your response.\n\n"
+            else:
+                full_prompt += f"User message: {user_message}\n\nPlease respond helpfully:"
             
             # Make API call with exponential backoff
             response = self._make_api_call_with_retry(full_prompt)

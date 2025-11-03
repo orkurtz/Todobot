@@ -196,8 +196,7 @@ def process_text_message(message, user, whatsapp_service, ai_service):
             save_message(user.id, 'text', sanitized_text, command_response)
             return
         
-        # Get AI response and parse tasks
-        ai_response = ai_service.get_response(user.id, sanitized_text)
+        # Step 1: Parse first to detect intent
         parsed_tasks = ai_service.parse_tasks(sanitized_text)
         
         # Debug: Show what AI parsed
@@ -205,31 +204,49 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         if parsed_tasks:
             for idx, task in enumerate(parsed_tasks):
                 print(f"   Task {idx+1}: action={task.get('action')}, task_id={task.get('task_id')}, description={task.get('description')}, due_date={task.get('due_date')}")
-        else:
-            print(f"   ⚠️ No tasks parsed! AI response was: {ai_response[:100]}")
         
-        # Execute parsed tasks
+        # Step 2: Execute parsed tasks (query database FIRST for queries)
         task_summary = ""
         has_action = False
+        is_query = False
         
         if parsed_tasks:
             task_summary = task_service.execute_parsed_tasks(user.id, parsed_tasks, sanitized_text)
             print(f"🔥 DEBUG - Execution result: {task_summary[:200] if task_summary else '(empty)'}")
             # Check if there's an action (not query)
             has_action = any(task.get('action') in ['complete', 'delete', 'add', 'update', 'reschedule', 'stop_series', 'complete_series'] for task in parsed_tasks)
+            is_query = any(task.get('action') == 'query' for task in parsed_tasks)
         
-        # Build response intelligently
+        # Step 3: Generate AI response WITH query results as context (for queries only)
+        if is_query and task_summary:
+            # Query detected - pass database results to AI so it knows what was found
+            ai_response = ai_service.get_response(user.id, sanitized_text, query_results=task_summary)
+            print(f"🔥 DEBUG - Generated AI response with query context")
+        elif not parsed_tasks:
+            # Pure conversation - no tasks detected
+            ai_response = ai_service.get_response(user.id, sanitized_text)
+            print(f"🔥 DEBUG - Generated AI response for pure conversation")
+        else:
+            # Actions (add/complete/etc.) - AI response not needed (we show task_summary only)
+            ai_response = ""
+            print(f"🔥 DEBUG - Skipping AI response for action")
+        
+        # Step 4: Build response intelligently
         if has_action and task_summary:
             # For actions (complete/delete/add) - only show execution result
             full_response = task_summary
             print(f"🔥 DEBUG - Sending execution result only")
         elif task_summary:
-            # For queries - combine AI response with data
-            full_response = f"{ai_response}\n\n{task_summary}"
+            # For queries - combine AI response (now context-aware) with data
+            if ai_response:
+                full_response = f"{ai_response}\n\n{task_summary}"
+            else:
+                # Fallback if AI response failed
+                full_response = task_summary
             print(f"🔥 DEBUG - Sending AI response + task summary")
         else:
-            # No task operations - just AI response
-            full_response = ai_response
+            # No task operations - just AI response (pure conversation)
+            full_response = ai_response if ai_response else "מצטער, אני מתקשה לעבד את הבקשה שלך כרגע. אנא נסה שוב בעוד רגע."
             print(f"🔥 DEBUG - ⚠️ Sending AI response only (no execution)!")
         
         # Add help text footer for responses that are not commands or actions
