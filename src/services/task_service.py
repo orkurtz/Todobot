@@ -1169,6 +1169,25 @@ class TaskService:
                 result += self.format_task_list(tasks)
                 return result
             
+            # FALLBACK: General task listing for queries that don't match specific patterns
+            # Catches natural language variations like "can you show me what I need to do?"
+            task_related_keywords = [
+                'task', 'tasks', 'todo', 'todos', 'things to do', 'need to do', 'have to do',
+                'what to do', 'what do', 'show me', 'tell me',
+                'משימה', 'משימות', 'לעשות', 'צריך', 'יש לי', 'מה יש', 'מה צריך', 'תראה',
+                'מה לעשות', 'מה עלי', 'איזה משימות'
+            ]
+            
+            if any(keyword in query_lower for keyword in task_related_keywords):
+                # General listing request - show all pending tasks
+                tasks = self.get_user_tasks(user_id, status='pending', limit=20)
+                if not tasks:
+                    return "📋 אין לך משימות פתוחות כרגע!"
+                
+                result = f"📋 המשימות שלך ({len(tasks)}):\n\n"
+                result += self.format_task_list(tasks)
+                return result
+            
             # Default - return None to let AI response handle it
             return None
             

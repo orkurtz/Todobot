@@ -192,21 +192,42 @@ Series Management:
 "השלם סדרה 3" →
 {{"tasks": [{{"action": "complete_series", "task_id": "3"}}]}}
 
-Hebrew - Query with date (CRITICAL for date-specific queries):
+Hebrew - Query with date (CRITICAL - people ask about tasks for specific dates):
 - "מה המשימות שלי למחר" → {{"tasks": [{{"action": "query", "description": "מה המשימות למחר", "due_date": "מחר"}}]}}
+- "מה יש לי לעשות מחר" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות מחר", "due_date": "מחר"}}]}}
+- "איזה משימות יש לי למחר" → {{"tasks": [{{"action": "query", "description": "איזה משימות יש לי למחר", "due_date": "מחר"}}]}}
 - "מה המשימות שלי למחרתיים" → {{"tasks": [{{"action": "query", "description": "מה המשימות למחרתיים", "due_date": "מחרתיים"}}]}}
+- "מה יש לי מחר" → {{"tasks": [{{"action": "query", "description": "מה יש לי מחר", "due_date": "מחר"}}]}}
 - "איזה משימות יש לי היום" → {{"tasks": [{{"action": "query", "description": "איזה משימות יש לי היום", "due_date": "היום"}}]}}
+- "מה המשימות שלי היום" → {{"tasks": [{{"action": "query", "description": "מה המשימות שלי היום", "due_date": "היום"}}]}}
+- "מה יש לי לעשות היום" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות היום", "due_date": "היום"}}]}}
+- "מה יש לי היום" → {{"tasks": [{{"action": "query", "description": "מה יש לי היום", "due_date": "היום"}}]}}
 - "מה המשימות שלי השבוע" → {{"tasks": [{{"action": "query", "description": "מה המשימות השבוע", "due_date": "השבוע"}}]}}
+- "מה יש לי לעשות השבוע" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות השבוע", "due_date": "השבוע"}}]}}
+- "איזה משימות יש לי השבוע" → {{"tasks": [{{"action": "query", "description": "איזה משימות יש לי השבוע", "due_date": "השבוע"}}]}}
+- "מה המשימות שלי השבוע הבא" → {{"tasks": [{{"action": "query", "description": "מה המשימות השבוע הבא", "due_date": "שבוע הבא"}}]}}
+- "מה יש לי לעשות בשבוע הבא" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות בשבוע הבא", "due_date": "שבוע הבא"}}]}}
+- "מה המשימות שלי ביום ראשון" → {{"tasks": [{{"action": "query", "description": "מה המשימות ביום ראשון", "due_date": "יום ראשון"}}]}}
+- "מה יש לי לעשות ביום שני" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות ביום שני", "due_date": "יום שני"}}]}}
 
 English - Query with date:
 - "what is my task for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks for tomorrow", "due_date": "tomorrow"}}]}}
 - "what are my tasks today" → {{"tasks": [{{"action": "query", "description": "tasks today", "due_date": "today"}}]}}
 - "show me tasks for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks for tomorrow", "due_date": "tomorrow"}}]}}
 - "what tasks do I have tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks tomorrow", "due_date": "tomorrow"}}]}}
+- "what do I need to do tomorrow" → {{"tasks": [{{"action": "query", "description": "what do I need to do tomorrow", "due_date": "tomorrow"}}]}}
+- "what do I have today" → {{"tasks": [{{"action": "query", "description": "what do I have today", "due_date": "today"}}]}}
+- "what tasks are scheduled for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks scheduled for tomorrow", "due_date": "tomorrow"}}]}}
+- "what's on my schedule for tomorrow" → {{"tasks": [{{"action": "query", "description": "what's on my schedule for tomorrow", "due_date": "tomorrow"}}]}}
+- "what do I have this week" → {{"tasks": [{{"action": "query", "description": "what do I have this week", "due_date": "this week"}}]}}
+- "what tasks are due this week" → {{"tasks": [{{"action": "query", "description": "tasks due this week", "due_date": "this week"}}]}}
+- "what do I need to do next week" → {{"tasks": [{{"action": "query", "description": "what do I need to do next week", "due_date": "next week"}}]}}
 
 Important: 
 - Always include "task_id" field when user mentions a specific task number!
 - For date-specific queries (asking about tasks for a specific date), ALWAYS include "due_date" in the query action to enable proper database filtering!
+- When user asks "what is my task for tomorrow" or "מה המשימות שלי למחר", extract the date and include it in due_date field!
+- For general task listing queries (asking to see all tasks), use action "query" with description containing "list all tasks" or similar phrasing
 
 Message to analyze: {message}"""
         }
