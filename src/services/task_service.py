@@ -1007,6 +1007,106 @@ class TaskService:
         try:
             query_lower = description.lower()
             
+            # NEW: Date-specific queries - "what tasks for tomorrow", "מה המשימות למחר"
+            # Check for date keywords in Hebrew and English
+            date_keywords = {
+                'tomorrow': ['tomorrow', 'מחר', 'למחר', 'tomorrow\'s', 'for tomorrow'],
+                'today': ['today', 'היום', 'להיום', 'today\'s', 'for today'],
+                'this week': ['this week', 'השבוע', 'השבוע הזה', 'for this week'],
+                'next week': ['next week', 'שבוע הבא', 'for next week']
+            }
+            
+            # Check if query contains date keywords
+            for key, keywords in date_keywords.items():
+                if any(kw in query_lower for kw in keywords):
+                    # Calculate date range based on keyword
+                    now_israel = datetime.now(self.israel_tz)
+                    
+                    if key == 'tomorrow':
+                        target_date = now_israel + timedelta(days=1)
+                        target_date_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                        target_date_end = target_date_start + timedelta(days=1)
+                        date_display = 'מחר'
+                    elif key == 'today':
+                        target_date_start = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
+                        target_date_end = target_date_start + timedelta(days=1)
+                        date_display = 'היום'
+                    elif key == 'this week':
+                        # Start of week (Sunday in Israel)
+                        days_since_sunday = (now_israel.weekday() + 1) % 7
+                        week_start = now_israel - timedelta(days=days_since_sunday)
+                        target_date_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                        target_date_end = target_date_start + timedelta(days=7)
+                        date_display = 'השבוע'
+                    elif key == 'next week':
+                        # Start of next week
+                        days_since_sunday = (now_israel.weekday() + 1) % 7
+                        week_start = now_israel - timedelta(days=days_since_sunday)
+                        target_date_start = week_start + timedelta(days=7)
+                        target_date_end = target_date_start + timedelta(days=7)
+                        date_display = 'שבוע הבא'
+                    else:
+                        continue
+                    
+                    # Convert to UTC for database query
+                    target_date_start_utc = target_date_start.astimezone(pytz.UTC).replace(tzinfo=None)
+                    target_date_end_utc = target_date_end.astimezone(pytz.UTC).replace(tzinfo=None)
+                    
+                    # Query tasks for that date range
+                    tasks = Task.query.filter(
+                        Task.user_id == user_id,
+                        Task.status == 'pending',
+                        Task.is_recurring == False,
+                        Task.due_date >= target_date_start_utc,
+                        Task.due_date < target_date_end_utc
+                    ).order_by(Task.due_date.asc()).all()
+                    
+                    if not tasks:
+                        return f"📋 אין לך משימות ל{date_display}"
+                    
+                    result = f"📋 המשימות שלך ל{date_display} ({len(tasks)}):\n\n"
+                    result += self.format_task_list(tasks)
+                    return result
+            
+            # Also check for due_date in task_data (from AI parsing) - handles natural language dates
+            if task_data.get('due_date'):
+                due_date_str = task_data['due_date']
+                # Parse the date using the existing parse_date_from_text method
+                parsed_date = self.parse_date_from_text(due_date_str)
+                if parsed_date:
+                    # Get tasks for that specific date
+                    # Ensure parsed_date is timezone-aware
+                    if parsed_date.tzinfo is None:
+                        parsed_date = pytz.UTC.localize(parsed_date)
+                    
+                    date_start = parsed_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                    date_end = date_start + timedelta(days=1)
+                    
+                    # Convert to UTC for database query
+                    date_start_utc = date_start.astimezone(pytz.UTC).replace(tzinfo=None)
+                    date_end_utc = date_end.astimezone(pytz.UTC).replace(tzinfo=None)
+                    
+                    tasks = Task.query.filter(
+                        Task.user_id == user_id,
+                        Task.status == 'pending',
+                        Task.is_recurring == False,
+                        Task.due_date >= date_start_utc,
+                        Task.due_date < date_end_utc
+                    ).order_by(Task.due_date.asc()).all()
+                    
+                    if not tasks:
+                        # Format date for display
+                        local_date = parsed_date.astimezone(self.israel_tz)
+                        date_display = local_date.strftime('%d/%m/%Y')
+                        return f"📋 אין לך משימות ל{date_display}"
+                    
+                    # Format date for display
+                    local_date = parsed_date.astimezone(self.israel_tz)
+                    date_display = local_date.strftime('%d/%m/%Y')
+                    result = f"📋 המשימות שלך ל{date_display} ({len(tasks)}):\n\n"
+                    result += self.format_task_list(tasks)
+                    return result
+            
             # Count queries - "how many tasks", "כמה משימות"
             if any(word in query_lower for word in ['כמה', 'how many', 'count']):
                 pending_tasks = self.get_user_tasks(user_id, status='pending')

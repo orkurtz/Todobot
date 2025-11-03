@@ -232,6 +232,12 @@ def process_text_message(message, user, whatsapp_service, ai_service):
             full_response = ai_response
             print(f"🔥 DEBUG - ⚠️ Sending AI response only (no execution)!")
         
+        # Add help text footer for responses that are not commands or actions
+        # Add footer if: no parsed tasks (pure conversation) OR parsed tasks but no actions (queries only)
+        if not parsed_tasks or (parsed_tasks and not has_action):
+            # This is either a conversational response or a query (not an action), add help footer
+            full_response += "\n\nלתפריט ועזרה עם הבוט הגב 'עזרה' בצאט"
+        
         # Send response
         whatsapp_service.send_message(from_number, full_response)
         
@@ -493,8 +499,11 @@ def handle_basic_commands(user_id, text):
 • נתק יומן - נתק את החיבור ליומן
 • סטטוס יומן - בדוק מצב חיבור היומן"""
     
-    # Task list commands
-    elif text_lower in ['tasks', 'my tasks', 'list', '/tasks', 'המשימות שלי', 'רשימה','משימות','?']:
+    # Task list commands - Enhanced to catch natural language variations
+    elif (text_lower in ['tasks', 'my tasks', 'list', '/tasks', 'המשימות שלי', 'רשימה','משימות','?'] or
+          any(word in text_lower for word in ['what are my tasks', 'show me tasks', 'what tasks do i have',
+                                               'מה המשימות שלי', 'הצג משימות', 'איזה משימות יש לי',
+                                               'show tasks', 'list tasks', 'my todo', 'הצג לי משימות'])):
         return handle_task_list_command(user_id)
     
     # NEW: Separate messages per task (for reactions)

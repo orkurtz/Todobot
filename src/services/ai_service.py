@@ -192,7 +192,21 @@ Series Management:
 "השלם סדרה 3" →
 {{"tasks": [{{"action": "complete_series", "task_id": "3"}}]}}
 
-Important: Always include "task_id" field when user mentions a specific task number!
+Hebrew - Query with date (CRITICAL for date-specific queries):
+- "מה המשימות שלי למחר" → {{"tasks": [{{"action": "query", "description": "מה המשימות למחר", "due_date": "מחר"}}]}}
+- "מה המשימות שלי למחרתיים" → {{"tasks": [{{"action": "query", "description": "מה המשימות למחרתיים", "due_date": "מחרתיים"}}]}}
+- "איזה משימות יש לי היום" → {{"tasks": [{{"action": "query", "description": "איזה משימות יש לי היום", "due_date": "היום"}}]}}
+- "מה המשימות שלי השבוע" → {{"tasks": [{{"action": "query", "description": "מה המשימות השבוע", "due_date": "השבוע"}}]}}
+
+English - Query with date:
+- "what is my task for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks for tomorrow", "due_date": "tomorrow"}}]}}
+- "what are my tasks today" → {{"tasks": [{{"action": "query", "description": "tasks today", "due_date": "today"}}]}}
+- "show me tasks for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks for tomorrow", "due_date": "tomorrow"}}]}}
+- "what tasks do I have tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks tomorrow", "due_date": "tomorrow"}}]}}
+
+Important: 
+- Always include "task_id" field when user mentions a specific task number!
+- For date-specific queries (asking about tasks for a specific date), ALWAYS include "due_date" in the query action to enable proper database filtering!
 
 Message to analyze: {message}"""
         }
