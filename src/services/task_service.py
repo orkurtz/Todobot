@@ -502,12 +502,19 @@ class TaskService:
                 local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
                 formatted_date = local_time.strftime("%d/%m %H:%M")
                 
-                # Add urgency indicators
-                now = datetime.utcnow()
-                if task.due_date < now:
+                # Get current date in Israel timezone for comparison
+                now_israel = datetime.now(self.israel_tz)
+                today_israel = now_israel.date()
+                tomorrow_israel = today_israel + timedelta(days=1)
+                task_date_israel = local_time.date()
+                
+                # Compare dates to determine label
+                if task.due_date < datetime.utcnow():  # Overdue check (UTC comparison)
                     task_text += f" ⚠️ (באיחור - {formatted_date})"
-                elif task.due_date < now + timedelta(hours=24):
+                elif task_date_israel == today_israel:
                     task_text += f" 🔥 (יעד היום {formatted_date})"
+                elif task_date_israel == tomorrow_israel:
+                    task_text += f" 🔥 (יעד מחר {formatted_date})"
                 else:
                     task_text += f" 📅 (יעד {formatted_date})"
             
@@ -521,7 +528,13 @@ class TaskService:
             return ""
         
         created_tasks = []
-        completed_tasks = []
+        actions_performed = {
+            'complete': [],
+            'update': [],
+            'reschedule': [],
+            'stop_series': [],
+            'complete_series': []
+        }
         deleted_tasks = []
         failed_tasks = []
         query_results = []
@@ -541,7 +554,7 @@ class TaskService:
                     task_identifier = task_data.get('task_id') or description
                     success, message = self._handle_task_completion(user_id, task_identifier, original_message)
                     if success:
-                        completed_tasks.append(message)
+                        actions_performed['complete'].append(message)
                     else:
                         failed_tasks.append(f"Failed to complete: {message}")
                 
@@ -613,7 +626,7 @@ class TaskService:
                     else:
                         success, message = self._handle_task_update(user_id, task_data)
                     if success:
-                        completed_tasks.append(message)  # Use completed_tasks list for updates
+                        actions_performed['update'].append(message)
                     else:
                         failed_tasks.append(message)
                 
@@ -621,7 +634,7 @@ class TaskService:
                     # Handle task reschedule
                     success, message = self._handle_task_reschedule(user_id, task_data)
                     if success:
-                        completed_tasks.append(message)
+                        actions_performed['reschedule'].append(message)
                     else:
                         failed_tasks.append(message)
                 
@@ -641,7 +654,7 @@ class TaskService:
                                           'delete' in (original_message or '').lower())
                         success, message = self.stop_recurring_series(task_id, user_id, delete_instances)
                         if success:
-                            completed_tasks.append(message)
+                            actions_performed['stop_series'].append(message)
                         else:
                             failed_tasks.append(message)
                 
@@ -651,7 +664,7 @@ class TaskService:
                         task_id = int(task_id_str)
                         success, message = self.complete_recurring_series(task_id, user_id)
                         if success:
-                            completed_tasks.append(message)
+                            actions_performed['complete_series'].append(message)
                         else:
                             failed_tasks.append(message)
                 
@@ -679,9 +692,25 @@ class TaskService:
             task_word = "משימה" if len(created_tasks) == 1 else "משימות"
             response_parts.append(f"נוצרו {len(created_tasks)} {task_word}:\n" + "\n".join(task_summaries))
         
-        if completed_tasks:
-            task_word = "משימה" if len(completed_tasks) == 1 else "משימות"
-            response_parts.append(f"✅ הושלמו {len(completed_tasks)} {task_word}:\n" + "\n".join(completed_tasks))
+        if actions_performed['complete']:
+            task_word = "משימה" if len(actions_performed['complete']) == 1 else "משימות"
+            response_parts.append(f"✅ הושלמו {len(actions_performed['complete'])} {task_word}:\n" + "\n".join(actions_performed['complete']))
+        
+        if actions_performed['update']:
+            task_word = "משימה" if len(actions_performed['update']) == 1 else "משימות"
+            response_parts.append(f"✏️ עודכנו {len(actions_performed['update'])} {task_word}:\n" + "\n".join(actions_performed['update']))
+        
+        if actions_performed['reschedule']:
+            task_word = "משימה" if len(actions_performed['reschedule']) == 1 else "משימות"
+            response_parts.append(f"📅 נדחו {len(actions_performed['reschedule'])} {task_word}:\n" + "\n".join(actions_performed['reschedule']))
+        
+        if actions_performed['stop_series']:
+            task_word = "סדרה" if len(actions_performed['stop_series']) == 1 else "סדרות"
+            response_parts.append(f"🛑 נעצרו {len(actions_performed['stop_series'])} {task_word}:\n" + "\n".join(actions_performed['stop_series']))
+        
+        if actions_performed['complete_series']:
+            task_word = "סדרה" if len(actions_performed['complete_series']) == 1 else "סדרות"
+            response_parts.append(f"✅ הושלמו {len(actions_performed['complete_series'])} {task_word}:\n" + "\n".join(actions_performed['complete_series']))
         
         if deleted_tasks:
             task_word = "משימה" if len(deleted_tasks) == 1 else "משימות"
@@ -1053,13 +1082,25 @@ class TaskService:
                     target_date_end_utc = target_date_end.astimezone(pytz.UTC).replace(tzinfo=None)
                     
                     # Query tasks for that date range
-                    tasks = Task.query.filter(
-                        Task.user_id == user_id,
-                        Task.status == 'pending',
-                        Task.is_recurring == False,
-                        Task.due_date >= target_date_start_utc,
-                        Task.due_date < target_date_end_utc
-                    ).order_by(Task.due_date.asc()).all()
+                    # For "today" query, exclude overdue tasks to prevent duplicates
+                    now_utc = datetime.utcnow()
+                    if key == 'today':
+                        tasks = Task.query.filter(
+                            Task.user_id == user_id,
+                            Task.status == 'pending',
+                            Task.is_recurring == False,
+                            Task.due_date >= target_date_start_utc,
+                            Task.due_date < target_date_end_utc,
+                            Task.due_date >= now_utc  # Exclude overdue tasks
+                        ).order_by(Task.due_date.asc()).all()
+                    else:
+                        tasks = Task.query.filter(
+                            Task.user_id == user_id,
+                            Task.status == 'pending',
+                            Task.is_recurring == False,
+                            Task.due_date >= target_date_start_utc,
+                            Task.due_date < target_date_end_utc
+                        ).order_by(Task.due_date.asc()).all()
                     
                     if not tasks:
                         return f"📋 אין לך משימות ל{date_display}"
@@ -1086,13 +1127,30 @@ class TaskService:
                     date_start_utc = date_start.astimezone(pytz.UTC).replace(tzinfo=None)
                     date_end_utc = date_end.astimezone(pytz.UTC).replace(tzinfo=None)
                     
-                    tasks = Task.query.filter(
-                        Task.user_id == user_id,
-                        Task.status == 'pending',
-                        Task.is_recurring == False,
-                        Task.due_date >= date_start_utc,
-                        Task.due_date < date_end_utc
-                    ).order_by(Task.due_date.asc()).all()
+                    # Check if query is for today - if so, exclude overdue tasks
+                    now_israel = datetime.now(self.israel_tz)
+                    today_start_israel = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
+                    today_end_israel = today_start_israel + timedelta(days=1)
+                    is_today_query = (date_start >= today_start_israel and date_start < today_end_israel)
+                    
+                    now_utc = datetime.utcnow()
+                    if is_today_query:
+                        tasks = Task.query.filter(
+                            Task.user_id == user_id,
+                            Task.status == 'pending',
+                            Task.is_recurring == False,
+                            Task.due_date >= date_start_utc,
+                            Task.due_date < date_end_utc,
+                            Task.due_date >= now_utc  # Exclude overdue tasks
+                        ).order_by(Task.due_date.asc()).all()
+                    else:
+                        tasks = Task.query.filter(
+                            Task.user_id == user_id,
+                            Task.status == 'pending',
+                            Task.is_recurring == False,
+                            Task.due_date >= date_start_utc,
+                            Task.due_date < date_end_utc
+                        ).order_by(Task.due_date.asc()).all()
                     
                     if not tasks:
                         # Format date for display
