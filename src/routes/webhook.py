@@ -238,9 +238,20 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         
         # Step 3: Generate AI response WITH query results as context (for queries only)
         if is_query and task_summary:
-            # Query detected - pass database results to AI so it knows what was found
-            ai_response = ai_service.get_response(user.id, sanitized_text, query_results=task_summary)
-            print(f"🔥 DEBUG - Generated AI response with query context")
+            # Check if query already returned "no tasks" message to avoid duplication
+            is_no_tasks_message = (
+                task_summary.startswith("📋 אין לך משימות") or 
+                task_summary.startswith("📋 אין לך משימות פתוחות")
+            )
+            
+            if is_no_tasks_message:
+                # Query result is sufficient, skip AI to avoid duplicate "no tasks" message
+                ai_response = ""
+                print(f"🔥 DEBUG - Skipping AI response (query already returned 'no tasks')")
+            else:
+                # Query detected - pass database results to AI so it knows what was found
+                ai_response = ai_service.get_response(user.id, sanitized_text, query_results=task_summary)
+                print(f"🔥 DEBUG - Generated AI response with query context")
         elif not parsed_tasks:
             # Pure conversation - no tasks detected
             ai_response = ai_service.get_response(user.id, sanitized_text)
@@ -502,10 +513,23 @@ def handle_basic_commands(user_id, text):
 • "לקנות מצרכים היום"
 • אפשר גם להקליט הודעות קוליות
 
+🎤 **הקלטה קולית:**
+אתה יכול להקליט כל פעולה - יצירה, עדכון, השלמה, מחיקה, שאילתות ועוד!
+פשוט הקלט מה שאתה רוצה לעשות, ואני אבצע את הפעולה.
+
 ✅ **השלמת משימות:**
-• "סיימתי משימה 2" - השלם לפי מספר
+אתה יכול להשלים משימות בכמה דרכים:
+• לפי מספר ברשימה: "סיימתי משימה 2"
+• לפי שם/תיאור: "סיימתי להתקשר לאמא"
+• לפי Task ID: "סיימתי משימה #123"
 • הגב עם 👍 על הודעת משימה (כתוב 'פירוט' כדי לראות משימות בנפרד)
-• "מחק משימה 3" - מחק משימה
+
+✏️ **עדכון ועריכה:**
+אתה יכול לעדכן משימות באותן דרכים:
+• לפי מספר: "עדכן משימה 2 ל..."
+• לפי שם: "עדכן 'להתקשר לאמא' ל..."
+• לפי Task ID: "עדכן משימה #123 ל..."
+• אפשר גם להקליט: "עדכן משימה 2 ל..."
 
 📅 **תאריכי יעד:**
 תאריכים יחסיים:
@@ -587,8 +611,7 @@ def handle_task_list_command(user_id):
         
         response = f"📋 **המשימות הממתינות שלך ({len(tasks)}):**\n\n"
         response += task_service.format_task_list(tasks)
-        response += "\n\n💡 הגב עם 👍 לכל הודעת משימה כדי לסמן כהושלמה!"
-        response += "\n💡 כתוב 'פירוט' כדי לראות משימות בנפרד ולהשתמש ב-👍"
+        response += "\n\n💡 לסיום משימה עם תגובה: כתוב 'פירוט', ואז הגב עם 👍 על כל הודעת משימה"
         
         return response
         
@@ -634,7 +657,7 @@ def handle_task_list_separate(user_id):
                     if msg_id:
                         save_task_message_mapping(user_id, msg_id, task.id)
         
-        return "לסיום משימה הגב עליה עם האימוגי 👍\n💡 כתוב 'פירוט' כדי לראות משימות בנפרד ולהשתמש ב-👍"
+        return "💡 לסיום משימה עם תגובה: כתוב 'פירוט', ואז הגב עם 👍 על כל הודעת משימה"
         
     except Exception as e:
         print(f"❌ Error: {e}")
