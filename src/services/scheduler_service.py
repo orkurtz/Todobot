@@ -662,10 +662,34 @@ class SchedulerService:
                     try:
                         # Check if we need to generate instance for today (Israel time)
                         now_israel = datetime.now(self.israel_tz)
-                        due_israel = pattern.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz).date() if pattern.due_date else None
+                        if pattern.due_date:
+                            if pattern.due_date.tzinfo:
+                                pattern_due_israel = pattern.due_date.astimezone(self.israel_tz)
+                            else:
+                                pattern_due_israel = pattern.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                            due_israel_date = pattern_due_israel.date()
+                        else:
+                            pattern_due_israel = None
+                            due_israel_date = None
                         
                         # Only generate if pattern's due_date (in Israel) is today or past
-                        if due_israel and due_israel <= now_israel.date():
+                        if due_israel_date and due_israel_date <= now_israel.date():
+                            # Prevent duplicate generation within the same day
+                            day_start_israel = pattern_due_israel.replace(hour=0, minute=0, second=0, microsecond=0)
+                            day_end_israel = day_start_israel + timedelta(days=1)
+                            
+                            day_start_utc = day_start_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+                            day_end_utc = day_end_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+                            
+                            existing_instance = Task.query.filter(
+                                Task.parent_recurring_id == pattern.id,
+                                Task.due_date >= day_start_utc,
+                                Task.due_date < day_end_utc
+                            ).first()
+                            if existing_instance:
+                                print(f"⚠️ Instance already exists for pattern {pattern.id} on {due_israel_date}")
+                                continue
+                            
                             instance = task_service.generate_next_instance(pattern)
                             if instance:
                                 generated_count += 1

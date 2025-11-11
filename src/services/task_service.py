@@ -1294,7 +1294,6 @@ class TaskService:
     
     def generate_next_instance(self, pattern_task: Task) -> Optional[Task]:
         """Generate the next instance of a recurring task"""
-        import json
         from sqlalchemy.exc import IntegrityError
         
         if not pattern_task.is_recurring or pattern_task.status != 'pending':
@@ -1310,28 +1309,45 @@ class TaskService:
             print(f"⚠️ Recurrence end date reached for pattern {pattern_task.id}")
             return None
         
-        # Calculate next due date
+        instance_due_date = pattern_task.due_date
+        if not instance_due_date:
+            print(f"⚠️ Pattern {pattern_task.id} has no due_date set, skipping generation")
+            return None
+        
+        # Normalise to UTC naive for comparisons/storage
+        if instance_due_date.tzinfo:
+            instance_due_date_utc = instance_due_date.astimezone(pytz.UTC)
+        else:
+            instance_due_date_utc = instance_due_date.replace(tzinfo=pytz.UTC)
+        instance_due_date_naive = instance_due_date_utc.replace(tzinfo=None)
+        
+        # If an instance already exists for this occurrence, advance the pattern and return it
+        existing_current = Task.query.filter(
+            Task.parent_recurring_id == pattern_task.id,
+            Task.due_date == instance_due_date_naive
+        ).first()
+        if existing_current:
+            print(f"⚠️ Instance already exists for pattern {pattern_task.id} at {instance_due_date_naive}")
+            next_due_date = self._calculate_next_due_date(pattern_task)
+            if next_due_date and next_due_date != pattern_task.due_date:
+                pattern_task.due_date = next_due_date
+                try:
+                    db.session.commit()
+                except IntegrityError:
+                    db.session.rollback()
+                    print(f"⚠️ Failed to advance due date for pattern {pattern_task.id} after detecting existing instance")
+            return existing_current
+        
+        # Calculate next occurrence (after this one)
         next_due_date = self._calculate_next_due_date(pattern_task)
         if not next_due_date:
             return None
         
-        # Check if instance already exists for this date
-        existing = Task.query.filter(
-            Task.parent_recurring_id == pattern_task.id,
-            Task.due_date == next_due_date
-        ).first()
-        
-        if existing:
-            print(f"⚠️ Instance already exists for {next_due_date}")
-            return existing
-        
         # Delete old incomplete instances before creating new one
-        # For daily: Delete all old pending instances
-        # For non-daily: Delete all old pending instances (they stay until new one is created)
         old_pending_instances = Task.query.filter(
             Task.parent_recurring_id == pattern_task.id,
             Task.status == 'pending',
-            Task.due_date < next_due_date
+            Task.due_date < instance_due_date_naive
         ).all()
         
         deleted_count = 0
@@ -1352,11 +1368,11 @@ class TaskService:
                 deleted_count += 1
             print(f"🗑️ Deleted {deleted_count} old incomplete instance(s) for pattern {pattern_task.id}")
         
-        # Create new instance
+        # Create new instance for the current due date
         instance = Task(
             user_id=pattern_task.user_id,
             description=pattern_task.description,
-            due_date=next_due_date,
+            due_date=instance_due_date_naive,
             status='pending',
             is_recurring=False,
             parent_recurring_id=pattern_task.id
@@ -1365,13 +1381,12 @@ class TaskService:
         db.session.add(instance)
         
         # Update pattern
-        # Adjust instance count: increment for new instance, decrement for deleted old instances
         pattern_task.recurring_instance_count = max(0, pattern_task.recurring_instance_count - deleted_count) + 1
-        pattern_task.due_date = next_due_date  # Update pattern's due_date to next occurrence
+        pattern_task.due_date = next_due_date  # Move pattern to the next occurrence
         
         # Sync instance to calendar if enabled and has due_date
         # Do this before commit but after flush to get instance.id
-        if self.calendar_service and next_due_date:
+        if self.calendar_service and instance_due_date_naive:
             try:
                 db.session.flush()  # Get instance.id before committing
                 success, event_id, error = self.calendar_service.create_calendar_event(instance)
@@ -1391,10 +1406,10 @@ class TaskService:
             return instance
         except IntegrityError:
             db.session.rollback()
-            print(f"⚠️ Duplicate prevented for pattern {pattern_task.id} at {next_due_date}")
+            print(f"⚠️ Duplicate prevented for pattern {pattern_task.id} at {instance_due_date_naive}")
             existing = Task.query.filter(
                 Task.parent_recurring_id == pattern_task.id,
-                Task.due_date == next_due_date
+                Task.due_date == instance_due_date_naive
             ).first()
             return existing
     
@@ -1406,17 +1421,22 @@ class TaskService:
         if not pattern_task.due_date:
             return None
         
+        # Normalize current due date to Israel timezone for calculations
         current_due = pattern_task.due_date
-        now_israel = datetime.now(self.israel_tz)
+        if current_due.tzinfo:
+            current_due_utc = current_due.astimezone(pytz.UTC)
+        else:
+            current_due_utc = current_due.replace(tzinfo=pytz.UTC)
+        current_due_israel = current_due_utc.astimezone(self.israel_tz)
         
         if pattern_task.recurrence_pattern == 'daily':
-            next_due = current_due + timedelta(days=pattern_task.recurrence_interval or 1)
+            next_due_israel = current_due_israel + timedelta(days=pattern_task.recurrence_interval or 1)
         
         elif pattern_task.recurrence_pattern == 'weekly':
-            next_due = current_due + timedelta(weeks=pattern_task.recurrence_interval or 1)
+            next_due_israel = current_due_israel + timedelta(weeks=pattern_task.recurrence_interval or 1)
         
         elif pattern_task.recurrence_pattern == 'interval':
-            next_due = current_due + timedelta(days=pattern_task.recurrence_interval or 1)
+            next_due_israel = current_due_israel + timedelta(days=pattern_task.recurrence_interval or 1)
         
         elif pattern_task.recurrence_pattern == 'specific_days':
             # Parse days of week
@@ -1433,16 +1453,15 @@ class TaskService:
             if not target_weekdays:
                 return None
             
-            # Find next matching weekday
-            search_date = current_due + timedelta(days=1)
+            # Find next matching weekday (strictly after current occurrence)
+            search_date = current_due_israel + timedelta(days=1)
             for _ in range(7):  # Check up to 7 days ahead
                 if search_date.weekday() in target_weekdays:
-                    # Keep the same time
-                    next_due = search_date.replace(
-                        hour=current_due.hour,
-                        minute=current_due.minute,
-                        second=0,
-                        microsecond=0
+                    next_due_israel = search_date.replace(
+                        hour=current_due_israel.hour,
+                        minute=current_due_israel.minute,
+                        second=current_due_israel.second,
+                        microsecond=current_due_israel.microsecond
                     )
                     break
                 search_date += timedelta(days=1)
@@ -1452,7 +1471,9 @@ class TaskService:
         else:
             return None
         
-        return next_due
+        # Convert back to UTC naive for storage
+        next_due_utc = next_due_israel.astimezone(pytz.UTC)
+        return next_due_utc.replace(tzinfo=None)
     
     def stop_recurring_series(self, pattern_task_id: int, user_id: int, delete_instances: bool = False) -> Tuple[bool, str]:
         """Stop a recurring series (deletes future instances)"""

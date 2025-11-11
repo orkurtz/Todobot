@@ -133,16 +133,44 @@ class CalendarService:
                 scopes=self.scopes
             )
             
-            # Refresh if expired
-            if credentials.expired and credentials.refresh_token:
-                credentials.refresh(Request())
+            # Proactive refresh: refresh if expired or expiring soon (within 5 minutes)
+            now_utc = datetime.utcnow()
+            needs_refresh = (
+                credentials.expired or 
+                (credentials.expiry and credentials.expiry <= now_utc + timedelta(minutes=5))
+            )
+            
+            if needs_refresh:
+                if not credentials.refresh_token:
+                    # No refresh token available - disconnect
+                    self._disable_calendar_for_user(user, "No refresh token available")
+                    return None
                 
-                # Update stored tokens
-                user.google_access_token = credentials.token
-                user.google_token_expiry = credentials.expiry
-                db.session.commit()
-                
-                print(f"🔄 Refreshed calendar token for user {user.id}")
+                try:
+                    credentials.refresh(Request())
+                    
+                    # Update stored tokens
+                    user.google_access_token = credentials.token
+                    user.google_token_expiry = credentials.expiry
+                    db.session.commit()
+                    
+                    print(f"🔄 Refreshed calendar token for user {user.id}")
+                except Exception as refresh_error:
+                    # Check error type to determine if token is invalid
+                    error_str = str(refresh_error).lower()
+                    
+                    # Token errors that require reconnection
+                    token_errors = ['invalid_grant', 'invalid_token', 'token_expired', 'invalid_request', 'unauthorized']
+                    is_token_error = any(err in error_str for err in token_errors)
+                    
+                    if is_token_error:
+                        # Token is invalid/revoked - auto-disconnect
+                        self._disable_calendar_for_user(user, f"Token invalid or revoked: {error_str[:100]}")
+                        return None
+                    else:
+                        # Network or other temporary error - log but don't disconnect
+                        print(f"⚠️ Failed to refresh token for user {user.id} (temporary error): {refresh_error}")
+                        return None
             
             return credentials
             
@@ -214,11 +242,39 @@ class CalendarService:
             return True, event_id, None
             
         except HttpError as e:
-            error_msg = f"Google Calendar API error: {e}"
-            print(f"❌ {error_msg}")
-            task.calendar_sync_error = error_msg
-            db.session.commit()
-            return False, None, error_msg
+            # Handle specific HTTP errors
+            if e.resp.status == 401:
+                # Unauthorized - token invalid, auto-disconnect
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, "Authentication failed (401)")
+                error_msg = "Calendar authentication failed"
+                task.calendar_sync_error = error_msg
+                db.session.commit()
+                return False, None, error_msg
+            elif e.resp.status == 403:
+                # Forbidden - permissions revoked, auto-disconnect
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, "Permissions revoked (403)")
+                error_msg = "Calendar permissions revoked"
+                task.calendar_sync_error = error_msg
+                db.session.commit()
+                return False, None, error_msg
+            elif e.resp.status == 429:
+                # Rate limited - log but don't disconnect
+                error_msg = f"Google Calendar rate limit exceeded: {e}"
+                print(f"⚠️ {error_msg}")
+                task.calendar_sync_error = error_msg
+                db.session.commit()
+                return False, None, error_msg
+            else:
+                # Other HTTP errors
+                error_msg = f"Google Calendar API error: {e}"
+                print(f"❌ {error_msg}")
+                task.calendar_sync_error = error_msg
+                db.session.commit()
+                return False, None, error_msg
             
         except Exception as e:
             error_msg = f"Failed to create calendar event: {str(e)}"
@@ -281,7 +337,19 @@ class CalendarService:
             return True, None
             
         except HttpError as e:
-            if e.resp.status == 404:
+            if e.resp.status == 401:
+                # Unauthorized - token invalid, auto-disconnect
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, "Authentication failed (401)")
+                return False, "Calendar authentication failed"
+            elif e.resp.status == 403:
+                # Forbidden - permissions revoked, auto-disconnect
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, "Permissions revoked (403)")
+                return False, "Calendar permissions revoked"
+            elif e.resp.status == 404:
                 # Event was deleted from calendar, create new one
                 print(f"⚠️ Event {task.calendar_event_id} not found, creating new one")
                 task.calendar_event_id = None
@@ -289,10 +357,15 @@ class CalendarService:
                 if success:
                     return True, None
                 return False, error
-            
-            error_msg = f"Failed to update calendar event: {e}"
-            print(f"❌ {error_msg}")
-            return False, error_msg
+            elif e.resp.status == 429:
+                # Rate limited - log but don't disconnect
+                error_msg = f"Google Calendar rate limit exceeded: {e}"
+                print(f"⚠️ {error_msg}")
+                return False, error_msg
+            else:
+                error_msg = f"Failed to update calendar event: {e}"
+                print(f"❌ {error_msg}")
+                return False, error_msg
             
         except Exception as e:
             error_msg = f"Failed to update calendar event: {str(e)}"
@@ -330,17 +403,34 @@ class CalendarService:
             return True, None
             
         except HttpError as e:
-            if e.resp.status == 404:
+            if e.resp.status == 401:
+                # Unauthorized - token invalid, auto-disconnect
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, "Authentication failed (401)")
+                return False, "Calendar authentication failed"
+            elif e.resp.status == 403:
+                # Forbidden - permissions revoked, auto-disconnect
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, "Permissions revoked (403)")
+                return False, "Calendar permissions revoked"
+            elif e.resp.status == 404:
                 # Event already deleted, that's OK
                 print(f"⚠️ Event {task.calendar_event_id} already deleted")
                 task.calendar_event_id = None
                 task.calendar_synced = False
                 db.session.commit()
                 return True, None
-            
-            error_msg = f"Failed to delete calendar event: {e}"
-            print(f"❌ {error_msg}")
-            return False, error_msg
+            elif e.resp.status == 429:
+                # Rate limited - log but don't disconnect
+                error_msg = f"Google Calendar rate limit exceeded: {e}"
+                print(f"⚠️ {error_msg}")
+                return False, error_msg
+            else:
+                error_msg = f"Failed to delete calendar event: {e}"
+                print(f"❌ {error_msg}")
+                return False, error_msg
             
         except Exception as e:
             error_msg = f"Failed to delete calendar event: {str(e)}"
@@ -383,10 +473,67 @@ class CalendarService:
             print(f"✅ Marked calendar event {task.calendar_event_id} as completed")
             return True, None
             
+        except HttpError as e:
+            if e.resp.status == 401:
+                # Unauthorized - token invalid, auto-disconnect
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, "Authentication failed (401)")
+                # Don't fail task completion if calendar update fails
+                return True, None
+            elif e.resp.status == 403:
+                # Forbidden - permissions revoked, auto-disconnect
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, "Permissions revoked (403)")
+                # Don't fail task completion if calendar update fails
+                return True, None
+            elif e.resp.status == 404:
+                # Event not found - that's OK, don't fail task completion
+                print(f"⚠️ Event {task.calendar_event_id} not found when marking as completed")
+                return True, None
+            elif e.resp.status == 429:
+                # Rate limited - log but don't fail task completion
+                print(f"⚠️ Google Calendar rate limit exceeded when marking event as completed: {e}")
+                return True, None
+            else:
+                # Other HTTP errors - don't fail task completion
+                print(f"⚠️ Failed to mark event as completed: {e}")
+                return True, None
         except Exception as e:
             # Don't fail task completion if calendar update fails
             print(f"⚠️ Failed to mark event as completed: {e}")
             return True, None  # Return success anyway
+    
+    def _disable_calendar_for_user(self, user: User, reason: str):
+        """Disable calendar for user and notify them"""
+        try:
+            user.google_calendar_enabled = False
+            user.google_access_token = None
+            user.google_refresh_token = None
+            user.google_token_expiry = None
+            
+            db.session.commit()
+            
+            print(f"🔌 Disabled calendar for user {user.id}: {reason}")
+            
+            # Notify user via WhatsApp (if service available)
+            try:
+                from ..app import whatsapp_service
+                if whatsapp_service:
+                    message = (
+                        "⚠️ החיבור ליומן Google נפסק\n\n"
+                        "החיבור נפסק מסיבה טכנית. כדי לחדש את החיבור:\n"
+                        "כתוב 'חבר יומן' כדי להתחבר מחדש."
+                    )
+                    whatsapp_service.send_message(user.phone_number, message)
+                    print(f"📱 Sent calendar disconnect notification to user {user.id}")
+            except Exception as notify_error:
+                # Don't fail if notification fails
+                print(f"⚠️ Failed to notify user {user.id} about calendar disconnect: {notify_error}")
+        except Exception as e:
+            print(f"❌ Error disabling calendar for user {user.id}: {e}")
+            db.session.rollback()
     
     def disconnect_calendar(self, user_id: int) -> Tuple[bool, str]:
         """Disconnect user's calendar"""
