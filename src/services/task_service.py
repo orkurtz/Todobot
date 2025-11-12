@@ -1082,16 +1082,13 @@ class TaskService:
                     target_date_end_utc = target_date_end.astimezone(pytz.UTC).replace(tzinfo=None)
                     
                     # Query tasks for that date range
-                    # For "today" query, exclude overdue tasks to prevent duplicates
-                    now_utc = datetime.utcnow()
                     if key == 'today':
                         tasks = Task.query.filter(
                             Task.user_id == user_id,
                             Task.status == 'pending',
                             Task.is_recurring == False,
                             Task.due_date >= target_date_start_utc,
-                            Task.due_date < target_date_end_utc,
-                            Task.due_date >= now_utc  # Exclude overdue tasks
+                            Task.due_date < target_date_end_utc
                         ).order_by(Task.due_date.asc()).all()
                     else:
                         tasks = Task.query.filter(
@@ -1127,21 +1124,19 @@ class TaskService:
                     date_start_utc = date_start.astimezone(pytz.UTC).replace(tzinfo=None)
                     date_end_utc = date_end.astimezone(pytz.UTC).replace(tzinfo=None)
                     
-                    # Check if query is for today - if so, exclude overdue tasks
+                    # Check if query is for today
                     now_israel = datetime.now(self.israel_tz)
                     today_start_israel = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
                     today_end_israel = today_start_israel + timedelta(days=1)
                     is_today_query = (date_start >= today_start_israel and date_start < today_end_israel)
                     
-                    now_utc = datetime.utcnow()
                     if is_today_query:
                         tasks = Task.query.filter(
                             Task.user_id == user_id,
                             Task.status == 'pending',
                             Task.is_recurring == False,
                             Task.due_date >= date_start_utc,
-                            Task.due_date < date_end_utc,
-                            Task.due_date >= now_utc  # Exclude overdue tasks
+                            Task.due_date < date_end_utc
                         ).order_by(Task.due_date.asc()).all()
                     else:
                         tasks = Task.query.filter(
