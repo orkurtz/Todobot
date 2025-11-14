@@ -80,12 +80,13 @@ Remember: You're helping busy people stay organized while maintaining natural co
 Instructions:
 1. Determine the user's primary intent: 'add', 'complete', 'delete', 'update', 'reschedule', or 'query'
 2. For 'add': Extract the task description and due date/time
-3. For 'complete' or 'delete': Extract task identifier (number or keywords) - ALWAYS set task_id field!
+3. For 'complete' or 'delete': Extract task identifier (number OR description/title keywords) - If it's a number, ALWAYS set task_id field! If it's a description/title, use description field to match by task title/description!
 4. For 'update': Extract task identifier AND new description (and optionally new date) - ALWAYS set task_id field!
 5. For 'reschedule': Extract task identifier AND new due date/time - ALWAYS set task_id field!
 6. Support natural language dates in Hebrew and English, including relative times like "בעוד X דקות/שעות" and "in X minutes/hours"
 7. Do not create tasks for casual conversation, questions without action, past completed actions, or vague statements.
 8. CRITICAL: When user mentions a task number (like "משימה 2", "task 3", just "2", etc), ALWAYS include "task_id": "NUMBER" in the JSON!
+9. CRITICAL: When user completes a task by its description/title (like "באגים של משימות חוזרות הושלם" or "buy milk completed"), extract the task description and use "description" field (NOT task_id) to match the task by its title/description!
 
 Actions:
 - 'add': Create new task
@@ -136,6 +137,7 @@ Respond with JSON only:
 
 Examples:
 Hebrew - Reschedule (דחייה/הקדמה):
+By Task ID:
 - "העבר משימה 2 למחר" → {{"tasks": [{{"action": "reschedule", "task_id": "2", "due_date": "מחר"}}]}}
 - "דחה משימה 1 ביומיים" → {{"tasks": [{{"action": "reschedule", "task_id": "1", "due_date": "מחרתיים"}}]}}
 - "דחה משימה 3 בשעתיים" → {{"tasks": [{{"action": "reschedule", "task_id": "3", "due_date": "בעוד שעתיים"}}]}}
@@ -147,33 +149,151 @@ Hebrew - Reschedule (דחייה/הקדמה):
 - "העבר ל-15/12 משימה 5" → {{"tasks": [{{"action": "reschedule", "task_id": "5", "due_date": "15/12"}}]}}
 - "דחה את 3 ל-5/11 בשעה 14:00" → {{"tasks": [{{"action": "reschedule", "task_id": "3", "due_date": "5/11 14:00"}}]}}
 - "את משימה 7 דחה ל-20/11" → {{"tasks": [{{"action": "reschedule", "task_id": "7", "due_date": "20/11"}}]}}
+By Description:
+- "דחה את לקנות חלב למחר" → {{"tasks": [{{"action": "reschedule", "description": "לקנות חלב", "due_date": "מחר"}}]}}
+- "העבר להתקשר לרופא למחרתיים" → {{"tasks": [{{"action": "reschedule", "description": "התקשר לרופא", "due_date": "מחרתיים"}}]}}
+- "דחה לקנות חלב בעוד שעתיים" → {{"tasks": [{{"action": "reschedule", "description": "לקנות חלב", "due_date": "בעוד שעתיים"}}]}}
+- "העבר את המשימה להתקשר לאמא ל-15/12" → {{"tasks": [{{"action": "reschedule", "description": "התקשר לאמא", "due_date": "15/12"}}]}}
+- "דחה באגים של משימות חוזרות למחר" → {{"tasks": [{{"action": "reschedule", "description": "באגים של משימות חוזרות", "due_date": "מחר"}}]}}
 
 Hebrew - Update (שינוי תיאור):
+By Task ID:
 - "שנה משימה 3 להתקשר לרופא" → {{"tasks": [{{"action": "update", "task_id": "3", "new_description": "התקשר לרופא"}}]}}
 - "עדכן משימה 5 קנה חלב מחר ב-10" → {{"tasks": [{{"action": "update", "task_id": "5", "new_description": "קנה חלב", "due_date": "מחר ב-10:00"}}]}}
 - "שנה 1 ללקנות לחם" → {{"tasks": [{{"action": "update", "task_id": "1", "new_description": "לקנות לחם"}}]}}
+By Description:
+- "שנה את לקנות חלב לקנות לחם" → {{"tasks": [{{"action": "update", "description": "לקנות חלב", "new_description": "לקנות לחם"}}]}}
+- "עדכן להתקשר לרופא להתקשר לרופא מחר" → {{"tasks": [{{"action": "update", "description": "התקשר לרופא", "new_description": "התקשר לרופא מחר"}}]}}
+- "שנה את המשימה באגים של משימות חוזרות לתיקון באגים" → {{"tasks": [{{"action": "update", "description": "באגים של משימות חוזרות", "new_description": "תיקון באגים"}}]}}
 
 Hebrew - Complete (השלמה):
+By Task ID:
 - "סיימתי משימה 2" → {{"tasks": [{{"action": "complete", "description": "2", "task_id": "2"}}]}}
 - "גמרתי את 3" → {{"tasks": [{{"action": "complete", "description": "3", "task_id": "3"}}]}}
+- "הושלם 5" → {{"tasks": [{{"action": "complete", "description": "5", "task_id": "5"}}]}}
+By Description:
+- "באגים של משימות חוזרות הושלם" → {{"tasks": [{{"action": "complete", "description": "באגים של משימות חוזרות"}}]}}
+- "סיימתי עם לקנות חלב" → {{"tasks": [{{"action": "complete", "description": "לקנות חלב"}}]}}
+- "הושלם לקנות חלב" → {{"tasks": [{{"action": "complete", "description": "לקנות חלב"}}]}}
+- "גמרתי את לקנות חלב" → {{"tasks": [{{"action": "complete", "description": "לקנות חלב"}}]}}
+- "סיימתי את המשימה לקנות חלב" → {{"tasks": [{{"action": "complete", "description": "לקנות חלב"}}]}}
+- "הושלמה המשימה להתקשר לרופא" → {{"tasks": [{{"action": "complete", "description": "התקשר לרופא"}}]}}
+- "סיימתי להתקשר לאמא" → {{"tasks": [{{"action": "complete", "description": "התקשר לאמא"}}]}}
+- "להתקשר לאמא הושלם" → {{"tasks": [{{"action": "complete", "description": "התקשר לאמא"}}]}}
+
+Hebrew - Delete (מחיקה):
+By Task ID:
+- "מחק משימה 2" → {{"tasks": [{{"action": "delete", "description": "2", "task_id": "2"}}]}}
+- "תמחק את 3" → {{"tasks": [{{"action": "delete", "description": "3", "task_id": "3"}}]}}
+- "הסר משימה 5" → {{"tasks": [{{"action": "delete", "description": "5", "task_id": "5"}}]}}
+By Description:
+- "מחק את לקנות חלב" → {{"tasks": [{{"action": "delete", "description": "לקנות חלב"}}]}}
+- "תמחק להתקשר לרופא" → {{"tasks": [{{"action": "delete", "description": "התקשר לרופא"}}]}}
+- "הסר את המשימה באגים של משימות חוזרות" → {{"tasks": [{{"action": "delete", "description": "באגים של משימות חוזרות"}}]}}
+- "מחק לקנות חלב" → {{"tasks": [{{"action": "delete", "description": "לקנות חלב"}}]}}
 
 Hebrew - Add (יצירה):
 - "תזכיר לי לקנות חלב מחר בבוקר" → {{"tasks": [{{"action": "add", "description": "לקנות חלב", "due_date": "מחר בבוקר"}}]}}
 - "להתקשר לאמא בעוד שעה" → {{"tasks": [{{"action": "add", "description": "להתקשר לאמא", "due_date": "בעוד שעה"}}]}}
 
+Hebrew - Query (חיפוש/רשימה):
+By Due Date:
+- "מה המשימות שלי למחר" → {{"tasks": [{{"action": "query", "description": "מה המשימות למחר", "due_date": "מחר"}}]}}
+- "מה יש לי לעשות מחר" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות מחר", "due_date": "מחר"}}]}}
+- "איזה משימות יש לי למחר" → {{"tasks": [{{"action": "query", "description": "איזה משימות יש לי למחר", "due_date": "מחר"}}]}}
+- "מה המשימות שלי למחרתיים" → {{"tasks": [{{"action": "query", "description": "מה המשימות למחרתיים", "due_date": "מחרתיים"}}]}}
+- "מה יש לי מחר" → {{"tasks": [{{"action": "query", "description": "מה יש לי מחר", "due_date": "מחר"}}]}}
+- "איזה משימות יש לי היום" → {{"tasks": [{{"action": "query", "description": "איזה משימות יש לי היום", "due_date": "היום"}}]}}
+- "מה המשימות שלי היום" → {{"tasks": [{{"action": "query", "description": "מה המשימות שלי היום", "due_date": "היום"}}]}}
+- "מה יש לי לעשות היום" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות היום", "due_date": "היום"}}]}}
+- "מה יש לי היום" → {{"tasks": [{{"action": "query", "description": "מה יש לי היום", "due_date": "היום"}}]}}
+- "מה המשימות שלי השבוע" → {{"tasks": [{{"action": "query", "description": "מה המשימות השבוע", "due_date": "השבוע"}}]}}
+- "מה יש לי לעשות השבוע" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות השבוע", "due_date": "השבוע"}}]}}
+- "איזה משימות יש לי השבוע" → {{"tasks": [{{"action": "query", "description": "איזה משימות יש לי השבוע", "due_date": "השבוע"}}]}}
+- "מה המשימות שלי השבוע הבא" → {{"tasks": [{{"action": "query", "description": "מה המשימות השבוע הבא", "due_date": "שבוע הבא"}}]}}
+- "מה יש לי לעשות בשבוע הבא" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות בשבוע הבא", "due_date": "שבוע הבא"}}]}}
+- "מה המשימות שלי ביום ראשון" → {{"tasks": [{{"action": "query", "description": "מה המשימות ביום ראשון", "due_date": "יום ראשון"}}]}}
+- "מה יש לי לעשות ביום שני" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות ביום שני", "due_date": "יום שני"}}]}}
+By Description:
+- "איפה המשימה לקנות חלב" → {{"tasks": [{{"action": "query", "description": "לקנות חלב"}}]}}
+- "מה עם להתקשר לרופא" → {{"tasks": [{{"action": "query", "description": "התקשר לרופא"}}]}}
+- "תראה לי את המשימה באגים של משימות חוזרות" → {{"tasks": [{{"action": "query", "description": "באגים של משימות חוזרות"}}]}}
+- "מה הסטטוס של לקנות חלב" → {{"tasks": [{{"action": "query", "description": "לקנות חלב"}}]}}
+General:
+- "מה כל המשימות שלי" → {{"tasks": [{{"action": "query", "description": "כל המשימות"}}]}}
+- "תראה לי את כל המשימות" → {{"tasks": [{{"action": "query", "description": "כל המשימות"}}]}}
+- "רשימת משימות" → {{"tasks": [{{"action": "query", "description": "רשימת משימות"}}]}}
+
 English - Reschedule:
+By Task ID:
 - "Move task 2 to tomorrow" → {{"tasks": [{{"action": "reschedule", "task_id": "2", "due_date": "tomorrow"}}]}}
 - "Postpone task 1 by 2 days" → {{"tasks": [{{"action": "reschedule", "task_id": "1", "due_date": "in 2 days"}}]}}
 - "Reschedule task 3 in 2 hours" → {{"tasks": [{{"action": "reschedule", "task_id": "3", "due_date": "in 2 hours"}}]}}
 - "Delay 5 by 30 minutes" → {{"tasks": [{{"action": "reschedule", "task_id": "5", "due_date": "in 30 minutes"}}]}}
+By Description:
+- "Move buy milk to tomorrow" → {{"tasks": [{{"action": "reschedule", "description": "buy milk", "due_date": "tomorrow"}}]}}
+- "Postpone call dentist by 2 days" → {{"tasks": [{{"action": "reschedule", "description": "call dentist", "due_date": "in 2 days"}}]}}
+- "Reschedule pay bills in 2 hours" → {{"tasks": [{{"action": "reschedule", "description": "pay bills", "due_date": "in 2 hours"}}]}}
+- "Delay the task to call mom by 30 minutes" → {{"tasks": [{{"action": "reschedule", "description": "call mom", "due_date": "in 30 minutes"}}]}}
 
 English - Update:
+By Task ID:
 - "Change task 3 to call dentist" → {{"tasks": [{{"action": "update", "task_id": "3", "new_description": "call dentist"}}]}}
 - "Update task 2 buy bread tomorrow" → {{"tasks": [{{"action": "update", "task_id": "2", "new_description": "buy bread", "due_date": "tomorrow"}}]}}
+By Description:
+- "Change buy milk to buy bread" → {{"tasks": [{{"action": "update", "description": "buy milk", "new_description": "buy bread"}}]}}
+- "Update call dentist to call doctor" → {{"tasks": [{{"action": "update", "description": "call dentist", "new_description": "call doctor"}}]}}
+- "Change the task pay bills to pay rent tomorrow" → {{"tasks": [{{"action": "update", "description": "pay bills", "new_description": "pay rent", "due_date": "tomorrow"}}]}}
 
 English - Complete:
+By Task ID:
 - "Done with task 2" → {{"tasks": [{{"action": "complete", "description": "2", "task_id": "2"}}]}}
 - "Finished 3" → {{"tasks": [{{"action": "complete", "description": "3", "task_id": "3"}}]}}
+- "Completed task 5" → {{"tasks": [{{"action": "complete", "description": "5", "task_id": "5"}}]}}
+By Description:
+- "Buy milk completed" → {{"tasks": [{{"action": "complete", "description": "Buy milk"}}]}}
+- "Done with buy milk" → {{"tasks": [{{"action": "complete", "description": "Buy milk"}}]}}
+- "Finished buying groceries" → {{"tasks": [{{"action": "complete", "description": "buying groceries"}}]}}
+- "Completed call mom" → {{"tasks": [{{"action": "complete", "description": "call mom"}}]}}
+- "Done with call dentist" → {{"tasks": [{{"action": "complete", "description": "call dentist"}}]}}
+- "Finished the task to pay bills" → {{"tasks": [{{"action": "complete", "description": "pay bills"}}]}}
+
+English - Delete:
+By Task ID:
+- "Delete task 2" → {{"tasks": [{{"action": "delete", "description": "2", "task_id": "2"}}]}}
+- "Remove task 3" → {{"tasks": [{{"action": "delete", "description": "3", "task_id": "3"}}]}}
+- "Cancel task 5" → {{"tasks": [{{"action": "delete", "description": "5", "task_id": "5"}}]}}
+By Description:
+- "Delete buy milk" → {{"tasks": [{{"action": "delete", "description": "buy milk"}}]}}
+- "Remove call dentist" → {{"tasks": [{{"action": "delete", "description": "call dentist"}}]}}
+- "Cancel the task to pay bills" → {{"tasks": [{{"action": "delete", "description": "pay bills"}}]}}
+
+English - Add:
+- "Remind me to buy milk tomorrow morning" → {{"tasks": [{{"action": "add", "description": "buy milk", "due_date": "tomorrow morning"}}]}}
+- "Call mom in an hour" → {{"tasks": [{{"action": "add", "description": "call mom", "due_date": "in an hour"}}]}}
+
+English - Query:
+By Due Date:
+- "what is my task for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks for tomorrow", "due_date": "tomorrow"}}]}}
+- "what are my tasks today" → {{"tasks": [{{"action": "query", "description": "tasks today", "due_date": "today"}}]}}
+- "show me tasks for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks for tomorrow", "due_date": "tomorrow"}}]}}
+- "what tasks do I have tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks tomorrow", "due_date": "tomorrow"}}]}}
+- "what do I need to do tomorrow" → {{"tasks": [{{"action": "query", "description": "what do I need to do tomorrow", "due_date": "tomorrow"}}]}}
+- "what do I have today" → {{"tasks": [{{"action": "query", "description": "what do I have today", "due_date": "today"}}]}}
+- "what tasks are scheduled for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks scheduled for tomorrow", "due_date": "tomorrow"}}]}}
+- "what's on my schedule for tomorrow" → {{"tasks": [{{"action": "query", "description": "what's on my schedule for tomorrow", "due_date": "tomorrow"}}]}}
+- "what do I have this week" → {{"tasks": [{{"action": "query", "description": "what do I have this week", "due_date": "this week"}}]}}
+- "what tasks are due this week" → {{"tasks": [{{"action": "query", "description": "tasks due this week", "due_date": "this week"}}]}}
+- "what do I need to do next week" → {{"tasks": [{{"action": "query", "description": "what do I need to do next week", "due_date": "next week"}}]}}
+By Description:
+- "where is the buy milk task" → {{"tasks": [{{"action": "query", "description": "buy milk"}}]}}
+- "what about call dentist" → {{"tasks": [{{"action": "query", "description": "call dentist"}}]}}
+- "show me the pay bills task" → {{"tasks": [{{"action": "query", "description": "pay bills"}}]}}
+- "what's the status of buy milk" → {{"tasks": [{{"action": "query", "description": "buy milk"}}]}}
+General:
+- "what are all my tasks" → {{"tasks": [{{"action": "query", "description": "all tasks"}}]}}
+- "show me all tasks" → {{"tasks": [{{"action": "query", "description": "all tasks"}}]}}
+- "list my tasks" → {{"tasks": [{{"action": "query", "description": "list tasks"}}]}}
 
 Recurring Tasks:
 "תזכיר לי כל יום ב-9 לקחת ויטמינים" →
@@ -201,42 +321,13 @@ Series Management:
 "השלם סדרה 3" →
 {{"tasks": [{{"action": "complete_series", "task_id": "3"}}]}}
 
-Hebrew - Query with date (CRITICAL - people ask about tasks for specific dates):
-- "מה המשימות שלי למחר" → {{"tasks": [{{"action": "query", "description": "מה המשימות למחר", "due_date": "מחר"}}]}}
-- "מה יש לי לעשות מחר" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות מחר", "due_date": "מחר"}}]}}
-- "איזה משימות יש לי למחר" → {{"tasks": [{{"action": "query", "description": "איזה משימות יש לי למחר", "due_date": "מחר"}}]}}
-- "מה המשימות שלי למחרתיים" → {{"tasks": [{{"action": "query", "description": "מה המשימות למחרתיים", "due_date": "מחרתיים"}}]}}
-- "מה יש לי מחר" → {{"tasks": [{{"action": "query", "description": "מה יש לי מחר", "due_date": "מחר"}}]}}
-- "איזה משימות יש לי היום" → {{"tasks": [{{"action": "query", "description": "איזה משימות יש לי היום", "due_date": "היום"}}]}}
-- "מה המשימות שלי היום" → {{"tasks": [{{"action": "query", "description": "מה המשימות שלי היום", "due_date": "היום"}}]}}
-- "מה יש לי לעשות היום" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות היום", "due_date": "היום"}}]}}
-- "מה יש לי היום" → {{"tasks": [{{"action": "query", "description": "מה יש לי היום", "due_date": "היום"}}]}}
-- "מה המשימות שלי השבוע" → {{"tasks": [{{"action": "query", "description": "מה המשימות השבוע", "due_date": "השבוע"}}]}}
-- "מה יש לי לעשות השבוע" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות השבוע", "due_date": "השבוע"}}]}}
-- "איזה משימות יש לי השבוע" → {{"tasks": [{{"action": "query", "description": "איזה משימות יש לי השבוע", "due_date": "השבוע"}}]}}
-- "מה המשימות שלי השבוע הבא" → {{"tasks": [{{"action": "query", "description": "מה המשימות השבוע הבא", "due_date": "שבוע הבא"}}]}}
-- "מה יש לי לעשות בשבוע הבא" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות בשבוע הבא", "due_date": "שבוע הבא"}}]}}
-- "מה המשימות שלי ביום ראשון" → {{"tasks": [{{"action": "query", "description": "מה המשימות ביום ראשון", "due_date": "יום ראשון"}}]}}
-- "מה יש לי לעשות ביום שני" → {{"tasks": [{{"action": "query", "description": "מה יש לי לעשות ביום שני", "due_date": "יום שני"}}]}}
-
-English - Query with date:
-- "what is my task for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks for tomorrow", "due_date": "tomorrow"}}]}}
-- "what are my tasks today" → {{"tasks": [{{"action": "query", "description": "tasks today", "due_date": "today"}}]}}
-- "show me tasks for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks for tomorrow", "due_date": "tomorrow"}}]}}
-- "what tasks do I have tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks tomorrow", "due_date": "tomorrow"}}]}}
-- "what do I need to do tomorrow" → {{"tasks": [{{"action": "query", "description": "what do I need to do tomorrow", "due_date": "tomorrow"}}]}}
-- "what do I have today" → {{"tasks": [{{"action": "query", "description": "what do I have today", "due_date": "today"}}]}}
-- "what tasks are scheduled for tomorrow" → {{"tasks": [{{"action": "query", "description": "tasks scheduled for tomorrow", "due_date": "tomorrow"}}]}}
-- "what's on my schedule for tomorrow" → {{"tasks": [{{"action": "query", "description": "what's on my schedule for tomorrow", "due_date": "tomorrow"}}]}}
-- "what do I have this week" → {{"tasks": [{{"action": "query", "description": "what do I have this week", "due_date": "this week"}}]}}
-- "what tasks are due this week" → {{"tasks": [{{"action": "query", "description": "tasks due this week", "due_date": "this week"}}]}}
-- "what do I need to do next week" → {{"tasks": [{{"action": "query", "description": "what do I need to do next week", "due_date": "next week"}}]}}
-
 Important: 
-- Always include "task_id" field when user mentions a specific task number!
+- Always include "task_id" field when user mentions a specific task number (e.g., "משימה 2", "task 3")!
+- When user references a task by description/title (e.g., "באגים של משימות חוזרות הושלם", "buy milk completed", "דחה לקנות חלב למחר"), extract the task description and use "description" field (NOT task_id) - the system will match by task title/description!
 - For date-specific queries (asking about tasks for a specific date), ALWAYS include "due_date" in the query action to enable proper database filtering!
 - When user asks "what is my task for tomorrow" or "מה המשימות שלי למחר", extract the date and include it in due_date field!
 - For general task listing queries (asking to see all tasks), use action "query" with description containing "list all tasks" or similar phrasing
+- ALL actions (complete, delete, reschedule, update, query) support both task_id (for numbers) and description (for task titles/descriptions) - choose based on what the user provides!
 
 Message to analyze: {message}"""
         }
