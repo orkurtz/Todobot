@@ -660,24 +660,94 @@ class SchedulerService:
                 
                 for pattern in recurring_patterns:
                     try:
-                        # Check if we need to generate instance for today (Israel time)
                         now_israel = datetime.now(self.israel_tz)
-                        if pattern.due_date:
-                            if pattern.due_date.tzinfo:
-                                pattern_due_israel = pattern.due_date.astimezone(self.israel_tz)
-                            else:
-                                pattern_due_israel = pattern.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
-                            due_israel_date = pattern_due_israel.date()
-                        else:
-                            pattern_due_israel = None
-                            due_israel_date = None
+                        today_date = now_israel.date()
+                        today_weekday = now_israel.weekday()  # 0=Monday, 6=Sunday
+                        today_day_of_month = today_date.day
                         
-                        # Only generate if pattern's due_date (in Israel) is today or past
-                        if due_israel_date and due_israel_date <= now_israel.date():
-                            # Prevent duplicate generation within the same day
-                            day_start_israel = pattern_due_israel.replace(hour=0, minute=0, second=0, microsecond=0)
-                            day_end_israel = day_start_israel + timedelta(days=1)
+                        should_generate = False
+                        
+                        # Backward compatibility: normalize old patterns on-the-fly if needed
+                        normalized_days_for_check = None
+                        if not pattern.recurrence_days_of_week and pattern.recurrence_pattern != 'monthly':
+                            # Try to normalize based on pattern type
+                            if pattern.recurrence_pattern == 'daily':
+                                # Daily: all days of week
+                                normalized_days_for_check = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+                            elif pattern.recurrence_pattern == 'weekly' and pattern.due_date:
+                                # Weekly: extract weekday from due_date
+                                if pattern.due_date.tzinfo:
+                                    pattern_due_israel = pattern.due_date.astimezone(self.israel_tz)
+                                else:
+                                    pattern_due_israel = pattern.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                                weekday_num = pattern_due_israel.weekday()  # 0=Monday, 6=Sunday
+                                weekday_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                                normalized_days_for_check = [weekday_names[weekday_num]]
+                            elif pattern.recurrence_pattern == 'interval':
+                                # Interval: all days
+                                normalized_days_for_check = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+                        
+                        # Check monthly patterns first
+                        if pattern.recurrence_pattern == 'monthly':
+                            if pattern.recurrence_day_of_month:
+                                # Handle edge case: if day doesn't exist (e.g., Feb 31), use last day
+                                if today_day_of_month == pattern.recurrence_day_of_month:
+                                    should_generate = True
+                                elif today_day_of_month > pattern.recurrence_day_of_month:
+                                    # Check if today is last day of month and pattern day is after
+                                    from calendar import monthrange
+                                    last_day = monthrange(today_date.year, today_date.month)[1]
+                                    if today_day_of_month == last_day and pattern.recurrence_day_of_month > last_day:
+                                        should_generate = True
+                        
+                        # Check weekday-based patterns
+                        elif pattern.recurrence_days_of_week or normalized_days_for_check:
+                            import json
+                            # Use normalized days if available (backward compatibility), otherwise use stored days
+                            days_list = normalized_days_for_check if normalized_days_for_check else json.loads(pattern.recurrence_days_of_week)
+                            day_mapping = {
+                                'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+                                'friday': 4, 'saturday': 5, 'sunday': 6
+                            }
+                            target_weekdays = [day_mapping[d.lower()] for d in days_list if d.lower() in day_mapping]
                             
+                            if today_weekday in target_weekdays:
+                                # For interval patterns, also check if enough days passed
+                                if pattern.recurrence_pattern == 'interval':
+                                    # Find last instance
+                                    last_instance = Task.query.filter(
+                                        Task.parent_recurring_id == pattern.id,
+                                        Task.status == 'pending'
+                                    ).order_by(Task.due_date.desc()).first()
+                                    
+                                    if last_instance:
+                                        if last_instance.due_date.tzinfo:
+                                            last_due_israel = last_instance.due_date.astimezone(self.israel_tz)
+                                        else:
+                                            last_due_israel = last_instance.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                                        
+                                        days_since_last = (today_date - last_due_israel.date()).days
+                                        if days_since_last >= (pattern.recurrence_interval or 1):
+                                            should_generate = True
+                                    else:
+                                        # No instances yet, check against pattern creation or due_date
+                                        if pattern.due_date:
+                                            if pattern.due_date.tzinfo:
+                                                pattern_due_israel = pattern.due_date.astimezone(self.israel_tz)
+                                            else:
+                                                pattern_due_israel = pattern.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                                            
+                                            days_since_pattern = (today_date - pattern_due_israel.date()).days
+                                            if days_since_pattern >= 0 and days_since_pattern % (pattern.recurrence_interval or 1) == 0:
+                                                should_generate = True
+                                else:
+                                    # Daily, weekly, specific_days: weekday match is enough
+                                    should_generate = True
+                        
+                        if should_generate:
+                            # Check for duplicate instance today
+                            day_start_israel = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
+                            day_end_israel = day_start_israel + timedelta(days=1)
                             day_start_utc = day_start_israel.astimezone(pytz.UTC).replace(tzinfo=None)
                             day_end_utc = day_end_israel.astimezone(pytz.UTC).replace(tzinfo=None)
                             
@@ -686,17 +756,45 @@ class SchedulerService:
                                 Task.due_date >= day_start_utc,
                                 Task.due_date < day_end_utc
                             ).first()
+                            
                             if existing_instance:
-                                print(f"⚠️ Instance already exists for pattern {pattern.id} on {due_israel_date}")
+                                print(f"⚠️ Instance already exists for pattern {pattern.id} on {today_date}")
                                 continue
                             
-                            instance = task_service.generate_next_instance(pattern)
-                            if instance:
-                                generated_count += 1
-                                print(f"✅ Generated instance for pattern {pattern.id}: {pattern.description[:50]}")
-                        
+                            # Create instance for today with pattern's time
+                            if pattern.due_date:
+                                if pattern.due_date.tzinfo:
+                                    pattern_due_israel = pattern.due_date.astimezone(self.israel_tz)
+                                else:
+                                    pattern_due_israel = pattern.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                                
+                                instance_due_date = now_israel.replace(
+                                    hour=pattern_due_israel.hour,
+                                    minute=pattern_due_israel.minute,
+                                    second=0,
+                                    microsecond=0
+                                )
+                                instance_due_utc = instance_due_date.astimezone(pytz.UTC).replace(tzinfo=None)
+                                
+                                # Temporarily set pattern.due_date to today for instance generation
+                                original_due_date = pattern.due_date
+                                pattern.due_date = instance_due_utc
+                                
+                                instance = task_service.generate_next_instance(pattern)
+                                
+                                if not instance:
+                                    pattern.due_date = original_due_date
+                                    db.session.rollback()
+                                else:
+                                    generated_count += 1
+                                    print(f"✅ Generated instance for pattern {pattern.id}: {pattern.description[:50]}")
+                            else:
+                                print(f"⚠️ Pattern {pattern.id} has no due_date, cannot generate instance")
+                    
                     except Exception as pattern_error:
                         print(f"❌ Error generating instance for pattern {pattern.id}: {pattern_error}")
+                        import traceback
+                        traceback.print_exc()
                         try:
                             if db.session.is_active:
                                 db.session.rollback()

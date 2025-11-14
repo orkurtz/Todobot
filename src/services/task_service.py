@@ -592,6 +592,7 @@ class TaskService:
                     if recurrence_pattern:
                         recurrence_interval = task_data.get('recurrence_interval', 1)
                         recurrence_days_of_week = task_data.get('recurrence_days_of_week')
+                        recurrence_day_of_month = task_data.get('recurrence_day_of_month')
                         recurrence_end_date_str = task_data.get('recurrence_end_date')
                         
                         # Parse end date if provided
@@ -606,7 +607,8 @@ class TaskService:
                             recurrence_pattern,
                             recurrence_interval,
                             recurrence_days_of_week,
-                            recurrence_end_date
+                            recurrence_end_date,
+                            recurrence_day_of_month
                         )
                     else:
                         # Existing non-recurring creation
@@ -1253,15 +1255,49 @@ class TaskService:
     def create_recurring_task(self, user_id: int, description: str, due_date: datetime,
                              recurrence_pattern: str, recurrence_interval: int = 1,
                              recurrence_days_of_week: List[str] = None,
-                             recurrence_end_date: datetime = None) -> Task:
+                             recurrence_end_date: datetime = None,
+                             recurrence_day_of_month: int = None) -> Task:
         """Create a recurring task pattern"""
         import json
         from sqlalchemy.exc import IntegrityError
         
         # Validate pattern
-        valid_patterns = ['daily', 'weekly', 'specific_days', 'interval']
+        valid_patterns = ['daily', 'weekly', 'specific_days', 'interval', 'monthly']
         if recurrence_pattern not in valid_patterns:
             raise ValueError(f"Invalid recurrence pattern: {recurrence_pattern}")
+        
+        # Normalize patterns to always populate recurrence_days_of_week
+        normalized_days_of_week = None
+        
+        if recurrence_pattern == 'daily':
+            # Daily: all days of week
+            normalized_days_of_week = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+            
+        elif recurrence_pattern == 'weekly':
+            # Weekly: extract weekday from due_date
+            if due_date:
+                if due_date.tzinfo:
+                    due_israel = due_date.astimezone(self.israel_tz)
+                else:
+                    due_israel = due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                weekday_num = due_israel.weekday()  # 0=Monday, 6=Sunday
+                weekday_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                normalized_days_of_week = [weekday_names[weekday_num]]
+            else:
+                # No due_date, cannot determine weekday
+                normalized_days_of_week = None
+                
+        elif recurrence_pattern == 'specific_days':
+            # Specific_days: use provided list (already normalized)
+            normalized_days_of_week = recurrence_days_of_week
+            
+        elif recurrence_pattern == 'interval':
+            # Interval: all days (but will check interval separately in scheduler)
+            normalized_days_of_week = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+            
+        elif recurrence_pattern == 'monthly':
+            # Monthly: no days_of_week, uses recurrence_day_of_month instead
+            normalized_days_of_week = None
         
         # Create pattern task
         task = Task(
@@ -1272,7 +1308,8 @@ class TaskService:
             is_recurring=True,
             recurrence_pattern=recurrence_pattern,
             recurrence_interval=recurrence_interval,
-            recurrence_days_of_week=json.dumps(recurrence_days_of_week) if recurrence_days_of_week else None,
+            recurrence_days_of_week=json.dumps(normalized_days_of_week) if normalized_days_of_week else None,
+            recurrence_day_of_month=recurrence_day_of_month,
             recurrence_end_date=recurrence_end_date,
             recurring_instance_count=0,
             recurring_max_instances=100
@@ -1521,6 +1558,31 @@ class TaskService:
             else:
                 return None
         
+        elif pattern_task.recurrence_pattern == 'monthly':
+            if not pattern_task.recurrence_day_of_month:
+                return None
+            
+            # Get next month
+            next_month = current_due_israel.replace(day=1) + timedelta(days=32)
+            next_month = next_month.replace(day=1)  # First day of next month
+            
+            # Try to set to recurrence_day_of_month
+            try:
+                next_due_israel = next_month.replace(day=pattern_task.recurrence_day_of_month)
+            except ValueError:
+                # Day doesn't exist in that month (e.g., Feb 31), use last day of month
+                from calendar import monthrange
+                last_day = monthrange(next_month.year, next_month.month)[1]
+                next_due_israel = next_month.replace(day=last_day)
+            
+            # Preserve time from current_due
+            next_due_israel = next_due_israel.replace(
+                hour=current_due_israel.hour,
+                minute=current_due_israel.minute,
+                second=current_due_israel.second,
+                microsecond=current_due_israel.microsecond
+            )
+        
         else:
             return None
         
@@ -1649,6 +1711,11 @@ class TaskService:
         
         elif pattern == 'interval':
             return f"כל {interval} ימים"
+        
+        elif pattern == 'monthly':
+            if task.recurrence_day_of_month:
+                return f"כל חודש ב-{task.recurrence_day_of_month}"
+            return "כל חודש"
         
         return "חוזר"
 

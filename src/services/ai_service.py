@@ -105,6 +105,8 @@ Recurring Task Support:
 - "כל יום שני ורביעי" / "every Monday and Wednesday" → specific multiple days
 - "כל יומיים" / "every 2 days" → interval recurring
 - "כל שני וחמישי ב-15:00" → specific days with time
+- "כל חודש ב-15" / "every month on the 15th" → monthly recurring
+- "כל חודש ב-1" / "every month on the 1st" → monthly on first day
 
 Series Management:
 - "עצור סדרה [מספר]" / "stop series [number]" → stop_series action
@@ -112,9 +114,10 @@ Series Management:
 - "מחק סדרה [מספר]" / "delete series [number]" → stop_series with delete
 
 For recurring tasks, add these fields:
-- "recurrence_pattern": "daily" | "weekly" | "specific_days" | "interval"
+- "recurrence_pattern": "daily" | "weekly" | "specific_days" | "interval" | "monthly"
 - "recurrence_interval": number (default 1)
 - "recurrence_days_of_week": ["monday", "wednesday"] or null
+- "recurrence_day_of_month": number (1-31) or null (for monthly patterns)
 - "recurrence_end_date": date string or null
 
 Current date for reference: {current_date}
@@ -182,8 +185,14 @@ Recurring Tasks:
 "כל יומיים להשקות צמחים" →
 {{"tasks": [{{"action": "add", "description": "להשקות צמחים", "due_date": "היום", "recurrence_pattern": "interval", "recurrence_interval": 2}}]}}
 
+"כל חודש ב-15 לשלם חשבונות" →
+{{"tasks": [{{"action": "add", "description": "לשלם חשבונות", "due_date": "היום ב-9:00", "recurrence_pattern": "monthly", "recurrence_day_of_month": 15}}]}}
+
 "every day at 9am take vitamins" →
 {{"tasks": [{{"action": "add", "description": "take vitamins", "due_date": "today at 9am", "recurrence_pattern": "daily", "recurrence_interval": 1}}]}}
+
+"every month on the 1st pay rent" →
+{{"tasks": [{{"action": "add", "description": "pay rent", "due_date": "today at 9am", "recurrence_pattern": "monthly", "recurrence_day_of_month": 1}}]}}
 
 Series Management:
 "עצור סדרה 5" →
@@ -369,7 +378,7 @@ Message to analyze: {message}"""
                     if action in ['reschedule', 'complete', 'delete', 'update', 'query', 'stop_series', 'complete_series']:
                         valid_tasks.append({
                             'action': action,
-                            'description': task.get('description', '').strip(),  # Can be empty for these actions
+                            'description': (task.get('description') or task.get('title', '')).strip(),  # Support both title and description
                             'due_date': task.get('due_date'),
                             'status': task.get('status', 'pending'),
                             'task_id': task.get('task_id'),
@@ -378,13 +387,14 @@ Message to analyze: {message}"""
                             'recurrence_pattern': task.get('recurrence_pattern'),
                             'recurrence_interval': task.get('recurrence_interval', 1),
                             'recurrence_days_of_week': task.get('recurrence_days_of_week'),
+                            'recurrence_day_of_month': task.get('recurrence_day_of_month'),
                             'recurrence_end_date': task.get('recurrence_end_date')
                         })
                     # For 'add' action, description is required
-                    elif action == 'add' and task.get('description') and len(task['description'].strip()) > 0:
+                    elif action == 'add' and (task.get('description') or task.get('title')) and len((task.get('description') or task.get('title', '')).strip()) > 0:
                         valid_tasks.append({
                             'action': action,
-                            'description': task['description'].strip(),
+                            'description': (task.get('description') or task.get('title', '')).strip(),
                             'due_date': task.get('due_date'),
                             'status': task.get('status', 'pending'),
                             'task_id': task.get('task_id'),
@@ -393,6 +403,7 @@ Message to analyze: {message}"""
                             'recurrence_pattern': task.get('recurrence_pattern'),
                             'recurrence_interval': task.get('recurrence_interval', 1),
                             'recurrence_days_of_week': task.get('recurrence_days_of_week'),
+                            'recurrence_day_of_month': task.get('recurrence_day_of_month'),
                             'recurrence_end_date': task.get('recurrence_end_date')
                         })
                 
@@ -457,9 +468,10 @@ Return JSON in this exact format (if a time is spoken, include due_date with HH:
             "due_date": "natural language date like 'מחר', 'tomorrow', 'יום שלישי' (use HH:MM if time spoken)" or null,
             "task_id": task number if mentioned or null,
             "new_description": "new description for update action" or null,
-            "recurrence_pattern": "daily" | "weekly" | "specific_days" | "interval" | null,
+            "recurrence_pattern": "daily" | "weekly" | "specific_days" | "interval" | "monthly" | null,
             "recurrence_interval": number or null,
             "recurrence_days_of_week": ["monday", "wednesday"] or null,
+            "recurrence_day_of_month": number (1-31) or null,
             "recurrence_end_date": date string or null
         }}
     ]
@@ -547,10 +559,10 @@ Always include the transcription for transparency.
                     # Validate and clean tasks
                     valid_tasks = []
                     for task in tasks:
-                        if task.get('description') and len(task['description'].strip()) > 0:
+                        if (task.get('description') or task.get('title')) and len((task.get('description') or task.get('title', '')).strip()) > 0:
                             valid_tasks.append({
                                 'action': task.get('action', 'add'),
-                                'description': task['description'].strip(),
+                                'description': (task.get('description') or task.get('title', '')).strip(),
                                 'due_date': task.get('due_date'),
                                 'status': task.get('status', 'pending'),
                                 'task_id': task.get('task_id'),
@@ -558,6 +570,7 @@ Always include the transcription for transparency.
                                 'recurrence_pattern': task.get('recurrence_pattern'),
                                 'recurrence_interval': task.get('recurrence_interval'),
                                 'recurrence_days_of_week': task.get('recurrence_days_of_week'),
+                                'recurrence_day_of_month': task.get('recurrence_day_of_month'),
                                 'recurrence_end_date': task.get('recurrence_end_date'),
                                 'transcription': transcription  # Include transcription
                             })

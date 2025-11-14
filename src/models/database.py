@@ -150,9 +150,10 @@ class Task(db.Model):
     
     # Recurring task fields
     is_recurring = db.Column(db.Boolean, default=False, nullable=False)
-    recurrence_pattern = db.Column(db.String(50))  # 'daily', 'weekly', 'specific_days', 'interval'
+    recurrence_pattern = db.Column(db.String(50))  # 'daily', 'weekly', 'specific_days', 'interval', 'monthly'
     recurrence_interval = db.Column(db.Integer)
     recurrence_days_of_week = db.Column(db.String(100))  # JSON array as string
+    recurrence_day_of_month = db.Column(db.Integer, nullable=True)  # Day of month (1-31) for monthly patterns
     recurrence_end_date = db.Column(db.DateTime)
     parent_recurring_id = db.Column(db.Integer, db.ForeignKey('task.id'), nullable=True)
     recurring_instance_count = db.Column(db.Integer, default=0)
