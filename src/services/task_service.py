@@ -813,12 +813,58 @@ class TaskService:
                 else:
                     return False, message
             else:
-                # Multiple tasks found
-                return False, f"❌ נמצאו מספר משימות התואמות '{description}'. אנא היה יותר ספציפי או השתמש במספר המשימה."
+                # Multiple tasks found - prioritize recurring instances
+                best_task = self._select_best_recurring_instance(tasks)
+                
+                if best_task:
+                    # Found a recurring instance to complete
+                    success, message = self.complete_task(best_task.id, user_id)
+                    if success:
+                        return True, f"{best_task.description[:50]}..."
+                    else:
+                        return False, message
+                else:
+                    # No recurring instances, return error asking for more specificity
+                    return False, f"❌ נמצאו מספר משימות התואמות '{description}'. אנא היה יותר ספציפי או השתמש במספר המשימה."
                 
         except Exception as e:
             print(f"❌ Error completing task by description: {e}")
             return False, str(e)
+    
+    def _select_best_recurring_instance(self, tasks: List[Task]) -> Optional[Task]:
+        """Select the best recurring instance from multiple matches.
+        
+        Prioritizes:
+        1. Tasks due today or overdue (most overdue first)
+        2. Earliest upcoming task if none overdue
+        
+        Returns None if no recurring instances found.
+        """
+        # Filter to recurring instances only
+        recurring_instances = [t for t in tasks if t.parent_recurring_id is not None]
+        
+        if not recurring_instances:
+            return None
+        
+        # Calculate today start in Israel timezone, then convert to UTC
+        now_israel = datetime.now(self.israel_tz)
+        today_start = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start_utc = today_start.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        # Find overdue or due today instances
+        due_today_or_overdue = [
+            t for t in recurring_instances 
+            if t.due_date and t.due_date <= today_start_utc
+        ]
+        
+        if due_today_or_overdue:
+            # Complete the most overdue one (earliest due_date)
+            return min(due_today_or_overdue, 
+                      key=lambda t: t.due_date if t.due_date else datetime.max)
+        else:
+            # If none are overdue, pick the earliest upcoming one
+            return min(recurring_instances,
+                      key=lambda t: t.due_date if t.due_date else datetime.max)
     
     def _handle_task_deletion(self, user_id: int, description: str) -> Tuple[bool, str]:
         """Handle task deletion based on description or number"""
@@ -906,8 +952,19 @@ class TaskService:
                 else:
                     return False, message
             else:
-                # Multiple tasks found
-                return False, f"❌ נמצאו מספר משימות התואמות '{description}'. אנא היה יותר ספציפי או השתמש במספר המשימה."
+                # Multiple tasks found - prioritize recurring instances
+                best_task = self._select_best_recurring_instance(tasks)
+                
+                if best_task:
+                    # Found a recurring instance to delete
+                    success, message = self.delete_task(best_task.id, user_id)
+                    if success:
+                        return True, f"{best_task.description[:50]}..."
+                    else:
+                        return False, message
+                else:
+                    # No recurring instances, return error asking for more specificity
+                    return False, f"❌ נמצאו מספר משימות התואמות '{description}'. אנא היה יותר ספציפי או השתמש במספר המשימה."
                 
         except Exception as e:
             print(f"❌ Error deleting task by description: {e}")
@@ -923,7 +980,7 @@ class TaskService:
             if not task_id_str:
                 return False, "❌ אנא ציין איזו משימה לעדכן (למשל: 'עדכן משימה 2')"
             
-            # Parse task ID
+            # Parse task ID or description
             if task_id_str.isdigit():
                 task_id = int(task_id_str)
                 
@@ -938,7 +995,31 @@ class TaskService:
                     task = tasks[task_id - 1]
                     task_id = task.id
             else:
-                return False, "❌ אנא ציין מספר משימה (למשל: 2, 3, 42)"
+                # Try to match by description
+                tasks = Task.query.filter(
+                    Task.user_id == user_id,
+                    Task.status == 'pending',
+                    Task.description.ilike(f"%{task_id_str}%")
+                ).all()
+                
+                if not tasks:
+                    return False, f"❌ לא נמצאה משימה פתוחה התואמת '{task_id_str}'"
+                
+                if len(tasks) == 1:
+                    # Single task found - ensure it's an instance, not a pattern
+                    if tasks[0].is_recurring:
+                        return False, "❌ לא ניתן לעדכן תבנית חוזרת ישירות. השתמש במספר המשימה לעדכון הסדרה."
+                    task_id = tasks[0].id
+                else:
+                    # Multiple tasks found - prioritize recurring instances
+                    best_task = self._select_best_recurring_instance(tasks)
+                    
+                    if best_task:
+                        # Found a recurring instance to update
+                        task_id = best_task.id
+                    else:
+                        # No recurring instances, return error asking for more specificity
+                        return False, f"❌ נמצאו מספר משימות התואמות '{task_id_str}'. אנא היה יותר ספציפי או השתמש במספר המשימה."
             
             # Parse new due date if provided - USE NATURAL LANGUAGE PARSER!
             new_due_date = None
@@ -982,7 +1063,7 @@ class TaskService:
             if not new_due_date_str:
                 return False, "❌ אנא ציין מתי לדחות (למשל: 'למחר', 'ליום שלישי', 'בעוד שבוע')"
             
-            # Parse task ID (same logic as update)
+            # Parse task ID or description (same logic as update)
             if task_id_str.isdigit():
                 task_id = int(task_id_str)
                 print(f"   Searching for task with ID={task_id}")
@@ -1002,7 +1083,38 @@ class TaskService:
                 else:
                     print(f"   ✅ Found task by DB ID: {task_id}")
             else:
-                return False, "❌ אנא ציין מספר משימה"
+                # Try to match by description
+                print(f"   Searching for task by description: '{task_id_str}'")
+                tasks = Task.query.filter(
+                    Task.user_id == user_id,
+                    Task.status == 'pending',
+                    Task.description.ilike(f"%{task_id_str}%")
+                ).all()
+                
+                if not tasks:
+                    print(f"   ❌ No tasks found matching '{task_id_str}'")
+                    return False, f"❌ לא נמצאה משימה פתוחה התואמת '{task_id_str}'"
+                
+                if len(tasks) == 1:
+                    # Single task found - ensure it's an instance, not a pattern
+                    if tasks[0].is_recurring:
+                        print(f"   ❌ Task is a recurring pattern, not an instance")
+                        return False, "❌ לא ניתן לדחות תבנית חוזרת ישירות. השתמש במספר המשימה לדחיית הסדרה."
+                    task_id = tasks[0].id
+                    print(f"   ✅ Found task by description: '{task_id_str}' → DB ID {task_id}")
+                else:
+                    # Multiple tasks found - prioritize recurring instances
+                    print(f"   ⚠️ Multiple tasks found ({len(tasks)}), selecting best recurring instance")
+                    best_task = self._select_best_recurring_instance(tasks)
+                    
+                    if best_task:
+                        # Found a recurring instance to reschedule
+                        task_id = best_task.id
+                        print(f"   ✅ Selected recurring instance: DB ID {task_id}")
+                    else:
+                        # No recurring instances, return error asking for more specificity
+                        print(f"   ❌ No recurring instances found among {len(tasks)} matches")
+                        return False, f"❌ נמצאו מספר משימות התואמות '{task_id_str}'. אנא היה יותר ספציפי או השתמש במספר המשימה."
             
             # Parse new due date - USE NATURAL LANGUAGE PARSER!
             new_due_date = self.parse_date_from_text(new_due_date_str)
