@@ -381,12 +381,14 @@ class TaskService:
         try:
             now = datetime.utcnow()
             window_end = now + timedelta(minutes=time_window_minutes)
+            # Look back 24 hours to catch anything missed during downtime
+            lookback_start = now - timedelta(hours=24)
             
             tasks = Task.query.filter(
                 Task.status == 'pending',
                 Task.is_recurring == False,  # Only show instances, not patterns
                 Task.due_date.isnot(None),
-                Task.due_date >= now,
+                Task.due_date >= lookback_start,
                 Task.due_date <= window_end,
                 Task.reminder_sent.is_(False)
             ).all()
@@ -1155,6 +1157,7 @@ class TaskService:
             date_keywords = {
                 'tomorrow': ['tomorrow', 'מחר', 'למחר', 'tomorrow\'s', 'for tomorrow'],
                 'today': ['today', 'היום', 'להיום', 'today\'s', 'for today'],
+                'yesterday': ['yesterday', 'אתמול', 'for yesterday', 'what did i do'],
                 'this week': ['this week', 'השבוע', 'השבוע הזה', 'for this week'],
                 'next week': ['next week', 'שבוע הבא', 'for next week']
             }
@@ -1174,6 +1177,10 @@ class TaskService:
                         target_date_start = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
                         target_date_end = target_date_start + timedelta(days=1)
                         date_display = 'היום'
+                    elif key == 'yesterday':
+                        target_date_start = now_israel.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+                        target_date_end = target_date_start + timedelta(days=1)
+                        date_display = 'אתמול'
                     elif key == 'this week':
                         # Start of week (Sunday in Israel)
                         days_since_sunday = (now_israel.weekday() + 1) % 7
@@ -1196,22 +1203,20 @@ class TaskService:
                     target_date_end_utc = target_date_end.astimezone(pytz.UTC).replace(tzinfo=None)
                     
                     # Query tasks for that date range
-                    if key == 'today':
-                        tasks = Task.query.filter(
-                            Task.user_id == user_id,
-                            Task.status == 'pending',
-                            Task.is_recurring == False,
-                            Task.due_date >= target_date_start_utc,
-                            Task.due_date < target_date_end_utc
-                        ).order_by(Task.due_date.asc()).all()
-                    else:
-                        tasks = Task.query.filter(
-                            Task.user_id == user_id,
-                            Task.status == 'pending',
-                            Task.is_recurring == False,
-                            Task.due_date >= target_date_start_utc,
-                            Task.due_date < target_date_end_utc
-                        ).order_by(Task.due_date.asc()).all()
+                    # If querying past (yesterday), include completed tasks
+                    query = Task.query.filter(
+                        Task.user_id == user_id,
+                        Task.is_recurring == False,
+                        Task.due_date >= target_date_start_utc,
+                        Task.due_date < target_date_end_utc
+                    )
+                    
+                    # Only filter by 'pending' if looking at future/today
+                    # For past (yesterday), we want to see what was done too
+                    if key not in ['yesterday']:
+                         query = query.filter(Task.status == 'pending')
+                    
+                    tasks = query.order_by(Task.due_date.asc()).all()
                     
                     if not tasks:
                         return f"📋 אין לך משימות ל{date_display}"

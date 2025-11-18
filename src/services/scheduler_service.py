@@ -4,6 +4,7 @@ Scheduler service for handling reminders and background tasks
 import os
 import atexit
 import json
+import time
 from datetime import datetime, timedelta
 import pytz
 import re # Ensure re is imported if you used the JSON cleaning fix elsewhere or might need it
@@ -27,16 +28,6 @@ class SchedulerService:
 
     def initialize_scheduler(self, app):
         """Initialize and start the scheduler"""
-        # Only start scheduler in worker role (code-based guard)
-        try:
-            from ..app import PROCESS_ROLE
-            if PROCESS_ROLE != 'worker':
-                print("Scheduler skipped: running in web process")
-                return True
-        except Exception:
-            # If role cannot be determined, skip to be safe in web
-            print("Scheduler skipped: role unknown")
-            return True
         if self.scheduler and hasattr(self.scheduler, 'running') and self.scheduler.running:
             print("Scheduler is already running - skipping initialization")
             return True
@@ -291,6 +282,7 @@ class SchedulerService:
                 now = datetime.utcnow()
                 
                 for user in active_users:
+                    time.sleep(0.2)
                     try:
                         # Get tasks due today
                         now_israel = datetime.now(self.israel_tz)
@@ -387,6 +379,7 @@ class SchedulerService:
                 print(f"Sending daily reminder to {len(active_users)} users")
                 
                 for user in active_users:
+                    time.sleep(0.2)
                     try:
                         # Calculate TODAY's range in Israel timezone
                         now_israel = datetime.now(self.israel_tz)

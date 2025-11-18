@@ -7,6 +7,7 @@ import json
 import time
 import random
 import re  # <-- *** ADD THIS IMPORT AT THE TOP ***
+import pytz
 from typing import Dict, Any, List, Optional
 
 
@@ -408,7 +409,8 @@ Message to analyze: {message}"""
                 print(f"Circuit breaker open for task parsing: {status_msg}")
                 return []
             
-            current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+            israel_tz = pytz.timezone('Asia/Jerusalem')
+            current_date = datetime.now(israel_tz).strftime("%Y-%m-%d %H:%M")
             prompt = self.prompts['task_parsing'].format(
                 current_date=current_date,
                 message=message_text
@@ -536,7 +538,8 @@ Message to analyze: {message}"""
                 print(f"Circuit breaker open for audio task parsing: {status_msg}")
                 return []
             
-            current_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+            israel_tz = pytz.timezone('Asia/Jerusalem')
+            current_date = datetime.now(israel_tz).strftime("%Y-%m-%d %H:%M")
             
             # Build prompt for audio transcription + task extraction
             audio_prompt = f"""You are an expert at understanding voice messages in Hebrew and English and extracting actionable tasks.

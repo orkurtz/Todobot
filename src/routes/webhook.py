@@ -609,6 +609,10 @@ def handle_task_list_command(user_id):
         if not tasks:
             return "📋 אין לך משימות ממתינות! שלח לי הודעה על משהו שאתה צריך לעשות."
         
+        # UX IMPROVEMENT: Use separate messages for small lists (< 10 items)
+        if len(tasks) <= 5:
+             return handle_task_list_separate(user_id)
+             
         response = f"📋 **המשימות הממתינות שלך ({len(tasks)}):**\n\n"
         response += task_service.format_task_list(tasks)
         response += "\n\n💡 לסיום משימה עם תגובה: כתוב 'פירוט', ואז הגב עם 👍 על כל הודעת משימה"

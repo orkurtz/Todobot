@@ -10,7 +10,7 @@ max_requests_jitter = int(os.getenv('GUNICORN_MAX_REQUESTS_JITTER', '100'))
 
 worker_class = 'sync'
 worker_connections = 1000
-preload_app = True
+preload_app = False
 
 graceful_timeout = 30
 worker_tmp_dir = '/dev/shm'

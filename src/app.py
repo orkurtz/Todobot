@@ -15,9 +15,6 @@ from .services.scheduler_service import SchedulerService
 from .services.monitoring_service import MonitoringService
 from .services.calendar_service import CalendarService
 
-# Process role: 'web' by default; worker process will override this value in code
-PROCESS_ROLE = 'web'
-
 # Global service instances
 ai_service = None
 whatsapp_service = None  
@@ -26,7 +23,7 @@ scheduler_service = None
 monitoring_service = None
 redis_client = None
 
-def create_app(config_name=None):
+def create_app(config_name=None, process_role='web'):
     """Create and configure Flask application"""
     app = Flask(__name__)
     
@@ -61,7 +58,7 @@ def create_app(config_name=None):
         )
         
         # Initialize scheduler service (only in worker process role)
-        if PROCESS_ROLE == 'worker':
+        if process_role == 'worker':
             scheduler_service = SchedulerService(
                 redis_client=redis_client, 
                 whatsapp_service=whatsapp_service
