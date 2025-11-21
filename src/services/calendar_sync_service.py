@@ -131,9 +131,15 @@ class CalendarSyncService:
                 event_updated = event_updated.astimezone(pytz.UTC)
             
             # Check if we already synced this version
-            if task.calendar_last_modified and task.calendar_last_modified >= event_updated:
-                # Already up to date
-                return False
+            if task.calendar_last_modified:
+                # Make calendar_last_modified timezone-aware for comparison
+                cal_last_modified = task.calendar_last_modified
+                if cal_last_modified.tzinfo is None:
+                    cal_last_modified = pytz.UTC.localize(cal_last_modified)
+                
+                if cal_last_modified >= event_updated:
+                    # Already up to date
+                    return False
             
             # Check if task was modified more recently than calendar event
             if task.last_modified_at:
@@ -147,7 +153,7 @@ class CalendarSyncService:
                     # Task is newer - update calendar from task
                     print(f"📤 Task {task.id} newer than calendar, updating calendar")
                     self.calendar_service.update_calendar_event(task)
-                    task.calendar_last_modified = event_updated
+                    task.calendar_last_modified = event_updated.replace(tzinfo=None)  # Store as naive UTC
                     db.session.commit()
                     return False  # Task not updated (calendar was updated)
             
