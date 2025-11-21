@@ -138,6 +138,16 @@ def process_incoming_message(message, value):
         message_id = message.get('id')
         timestamp = message.get('timestamp')
         
+        # --- FIX: Idempotency Check ---
+        # Check if we already processed this specific message ID
+        # Import Message model locally to ensure it's available if not global (though it is global)
+        from ..models.database import Message
+        existing_msg = Message.query.filter_by(whatsapp_message_id=message_id).first()
+        if existing_msg:
+            print(f"⚠️ Message {message_id} already processed. Skipping duplicate.")
+            return
+        # ------------------------------
+        
         print(f"📱 Incoming {message_type} message from {from_number}")
         print(f"🔍 Message structure: {json.dumps(message, indent=2)}")
         

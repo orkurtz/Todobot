@@ -444,23 +444,25 @@ class TaskService:
             db.session.commit()
             
             # Update calendar event if exists
-            if self.calendar_service and task.calendar_event_id:
-                try:
-                    success, error = self.calendar_service.update_calendar_event(task)
-                    if not success:
-                        print(f"⚠️ Failed to update calendar: {error}")
-                except Exception as e:
-                    print(f"⚠️ Calendar sync error (non-fatal): {e}")
-            # Create calendar event if due date was just added
-            elif self.calendar_service and new_due_date and not old_due_date:
-                try:
-                    success, event_id, error = self.calendar_service.create_calendar_event(task)
-                    if success:
-                        print(f"📅 Created calendar event for updated task")
-                    elif error:
-                        print(f"⚠️ Failed to create calendar event: {error}")
-                except Exception as e:
-                    print(f"⚠️ Calendar sync error (non-fatal): {e}")
+            if self.calendar_service:
+                if task.calendar_event_id:
+                    try:
+                        success, error = self.calendar_service.update_calendar_event(task)
+                        if not success:
+                            print(f"⚠️ Failed to update calendar: {error}")
+                    except Exception as e:
+                        print(f"⚠️ Calendar sync error (non-fatal): {e}")
+                
+                # If we DON'T have an event ID but have a due date, try to create one (Recovery)
+                elif task.due_date:
+                    try:
+                        success, event_id, error = self.calendar_service.create_calendar_event(task)
+                        if success:
+                            print(f"📅 Created missing calendar event for updated task")
+                        elif error:
+                            print(f"⚠️ Failed to create calendar event: {error}")
+                    except Exception as e:
+                        print(f"⚠️ Calendar sync error (non-fatal): {e}")
             
             # Build confirmation message in Hebrew
             changes = []
@@ -1566,8 +1568,9 @@ class TaskService:
                         success, error = self.calendar_service.delete_calendar_event(old_instance)
                         if success:
                             print(f"🗑️ Deleted calendar event for old instance {old_instance.id}")
-                        elif error:
-                            print(f"⚠️ Failed to delete calendar event for old instance: {error}")
+                        else:
+                            # Log but don't block - orphaned events are better than stuck tasks
+                            print(f"⚠️ Failed to delete calendar event for old instance {old_instance.id}: {error}")
                     except Exception as e:
                         print(f"⚠️ Calendar sync error deleting old instance event (non-fatal): {e}")
                 
@@ -1726,18 +1729,26 @@ class TaskService:
                     Task.status == 'pending'
                 ).all()
                 
-                # Delete calendar events for instances
+                # Delete calendar events for instances with proper error tracking
+                deleted_cal_events = 0
+                failed_cal_deletes = 0
                 if self.calendar_service:
                     for instance in future_instances:
                         if instance.calendar_event_id:
                             try:
                                 success, error = self.calendar_service.delete_calendar_event(instance)
                                 if success:
+                                    deleted_cal_events += 1
                                     print(f"🗑️ Deleted calendar event for stopped instance {instance.id}")
-                                elif error:
+                                else:
+                                    failed_cal_deletes += 1
                                     print(f"⚠️ Failed to delete calendar event for instance {instance.id}: {error}")
                             except Exception as e:
+                                failed_cal_deletes += 1
                                 print(f"⚠️ Calendar sync error deleting instance event (non-fatal): {e}")
+                
+                if failed_cal_deletes > 0:
+                    print(f"⚠️ {failed_cal_deletes} calendar events may be orphaned (check Google Calendar manually)")
                 
                 # Now bulk delete the instances
                 deleted_count = Task.query.filter(
@@ -1913,8 +1924,8 @@ class TaskService:
             # Propagate to future pending instances
             future_instances = Task.query.filter(
                 Task.parent_recurring_id == pattern_id,
-                Task.status == 'pending',
-                Task.due_date >= datetime.utcnow()
+                Task.status == 'pending'
+                # Removed due_date filter to ensure we catch the single live instance even if it's overdue
             ).all()
 
             updated = 0
@@ -1930,6 +1941,18 @@ class TaskService:
                         second=0,
                         microsecond=0
                     )
+                
+                # --- FIX: Sync Recurring Instance Updates to Calendar ---
+                if self.calendar_service:
+                    try:
+                        if inst.calendar_event_id:
+                            self.calendar_service.update_calendar_event(inst)
+                        elif inst.due_date:
+                            self.calendar_service.create_calendar_event(inst)
+                    except Exception as e:
+                        print(f"⚠️ Calendar sync warning for instance {inst.id}: {e}")
+                # --------------------------------------------------------
+                
                 updated += 1
 
             if updated:

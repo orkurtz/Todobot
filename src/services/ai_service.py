@@ -98,8 +98,14 @@ LOGIC RULES:
   - If a **number** is mentioned (e.g., "task 5", "#2", "5"), extract it as `task_id`.
   - If **text** is used (e.g., "buy milk"), extract it as `description` for matching.
 - **Recurring:**
-  - Detect patterns like "every day", "every Monday", "once a month".
+  - Detect patterns like "every day", "every Monday", "once a month", "every X days".
   - Map to `recurrence_pattern`: 'daily', 'weekly', 'monthly', 'interval' (every X days), or 'specific_days'.
+- **Update vs Reschedule (CRITICAL):**
+  - If user wants to change the **content/description**: use `update` with `new_description`.
+  - If user wants to change the **date/time**: use `reschedule` with `due_date`.
+  - Keywords for reschedule: "defer", "postpone", "move to", "change date", "דחה", "העבר".
+- **Multiple Tasks:**
+  - If user mentions multiple items with "and" or commas, create separate task objects.
 
 RESPONSE STRUCTURE (JSON):
 {{
@@ -123,29 +129,44 @@ FEW-SHOT EXAMPLES (Guidelines covering all scenarios):
 User: "תזכיר לי מחר ב-9 בבוקר לשלוח מייל"
 JSON: {{"tasks": [{{"action": "add", "description": "לשלוח מייל", "due_date": "tomorrow at 09:00"}}]}}
 
+User: "Buy milk and call mom" (Multiple tasks)
+JSON: {{"tasks": [{{"action": "add", "description": "Buy milk"}}, {{"action": "add", "description": "call mom"}}]}}
+
 User: "סיימתי משימה 3" (Finished task 3)
 JSON: {{"tasks": [{{"action": "complete", "task_id": "3", "description": "3"}}]}}
 
 User: "מחק את המשימה לקנות חלב" (Delete by text description)
 JSON: {{"tasks": [{{"action": "delete", "description": "לקנות חלב"}}]}}
 
-User: "דחה את 5 לעוד שעתיים" (Relative time calculation)
+User: "דחה את 5 לעוד שעתיים" (Reschedule - time change)
 JSON: {{"tasks": [{{"action": "reschedule", "task_id": "5", "due_date": "in 2 hours"}}]}}
 
-User: "שנה את משימה 2 ל-ללכת לרופא" (Update by ID)
+User: "Move task 1 to tomorrow" (Reschedule - time change)
+JSON: {{"tasks": [{{"action": "reschedule", "task_id": "1", "due_date": "tomorrow"}}]}}
+
+User: "שנה את משימה 2 ל-ללכת לרופא" (Update - content change)
 JSON: {{"tasks": [{{"action": "update", "task_id": "2", "new_description": "ללכת לרופא"}}]}}
 
-User: "שנה את לקנות חלב ל-לקנות לחם" (Update by text description)
-JSON: {{"tasks": [{{"action": "update", "description": "לקנות חלב", "new_description": "לקנות לחם"}}]}}
+User: "Change milk to bread" (Update - content change)
+JSON: {{"tasks": [{{"action": "update", "description": "milk", "new_description": "bread"}}]}}
 
 User: "מה המשימות שלי למחר?" (Query)
 JSON: {{"tasks": [{{"action": "query", "description": "tasks for tomorrow", "due_date": "tomorrow"}}]}}
 
-User: "כל שני וחמישי ב-17:00 חוג ג'ודו" (Complex recurrence)
+User: "כל שני וחמישי ב-17:00 חוג ג'ודו" (Specific days recurrence)
 JSON: {{"tasks": [{{"action": "add", "description": "חוג ג'ודו", "due_date": "next Monday at 17:00", "recurrence_pattern": "specific_days", "recurrence_days_of_week": ["monday", "thursday"]}}]}}
+
+User: "כל 3 ימים לקחת תרופה" (Interval recurrence)
+JSON: {{"tasks": [{{"action": "add", "description": "לקחת תרופה", "due_date": "{current_date}", "recurrence_pattern": "interval", "recurrence_interval": 3}}]}}
+
+User: "Every day at 9am vitamins" (Daily recurrence)
+JSON: {{"tasks": [{{"action": "add", "description": "vitamins", "due_date": "today at 09:00", "recurrence_pattern": "daily", "recurrence_interval": 1}}]}}
 
 User: "עצור את סדרה 4" (Stop series)
 JSON: {{"tasks": [{{"action": "stop_series", "task_id": "4"}}]}}
+
+User: "השלם סדרה 2" (Complete series - mark done but keep instances)
+JSON: {{"tasks": [{{"action": "complete_series", "task_id": "2"}}]}}
 
 User Message to Analyze: {message}"""
         }
