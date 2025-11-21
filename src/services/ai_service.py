@@ -624,7 +624,18 @@ Always include the transcription for transparency.
                 
                 # CRITICAL: Filter out events that are already tasks (deduplication)
                 task_event_ids = {t.calendar_event_id for t in tasks if t.calendar_event_id}
-                events = [e for e in all_events if e['id'] not in task_event_ids]
+                
+                # Filter out:
+                # 1. Events that are already bot tasks (deduplication)
+                # 2. Cancelled events (status == 'cancelled')
+                # 3. Completed events (colorId == '8' or has ✅ in title)
+                events = [
+                    e for e in all_events 
+                    if e['id'] not in task_event_ids
+                    and e.get('status') != 'cancelled'
+                    and e.get('colorId') != '8'  # Gray = completed
+                    and not e.get('title', '').startswith('✅')  # Completed marker in title
+                ]
                 
                 print(f"📅 Schedule for user {user.id}: {len(tasks)} tasks, {len(events)} events (deduplicated from {len(all_events)} total)")
             except Exception as e:
