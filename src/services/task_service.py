@@ -329,7 +329,15 @@ class TaskService:
         for english, days in english_mappings.items():
             if english in text:
                 target_date = now + timedelta(days=days)
-                target_date = target_date.replace(hour=9, minute=0, second=0, microsecond=0)
+                
+                # Try to extract time if present (same as Hebrew handling)
+                time_match = re.search(r'(\d{1,2}):(\d{2})', text)
+                if time_match:
+                    hour, minute = int(time_match.group(1)), int(time_match.group(2))
+                    target_date = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                else:
+                    target_date = target_date.replace(hour=9, minute=0, second=0, microsecond=0)
+                
                 return target_date.astimezone(pytz.UTC).replace(tzinfo=None)
         
         # Handle DD/MM and DD/MM/YYYY formats (Israeli/European format)
