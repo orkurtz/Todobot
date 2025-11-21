@@ -657,19 +657,14 @@ Always include the transcription for transparency.
         
         parts = []
         
-        # Section 1: Tasks
+        # Section 1: Bot Tasks (using TaskService formatter for proper format with IDs)
         if tasks:
-            parts.append(f"📋 המשימות שלך ({len(tasks)}):")
-            for i, task in enumerate(tasks, 1):
-                checkbox = "✅" if task.status == 'completed' else "⬜"
-                
-                if task.due_date:
-                    local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(israel_tz)
-                    time_str = local_time.strftime('%H:%M')
-                    parts.append(f"{checkbox} {task.description[:50]} ({time_str})")
-                else:
-                    parts.append(f"{checkbox} {task.description[:50]}")
+            parts.append(f"📋 המשימות שלך ({len(tasks)}):\n")
             
+            # Import TaskService to use its format_task_list method
+            from ..app import task_service
+            formatted_tasks = task_service.format_task_list(tasks, show_due_date=True)
+            parts.append(formatted_tasks)
             parts.append("")  # Empty line separator
         
         # Section 2: Calendar Events (non-task events)
@@ -678,6 +673,7 @@ Always include the transcription for transparency.
             for event in events:
                 start_time = event['start'].astimezone(israel_tz).strftime('%H:%M')
                 end_time = event['end'].astimezone(israel_tz).strftime('%H:%M')
-                parts.append(f"🕐 {start_time}-{end_time} {event['title'][:50]}")
+                # Changed icon from 🕐 to 🗓️ (better WhatsApp support)
+                parts.append(f"🗓️ {start_time}-{end_time} {event['title'][:50]}")
         
         return "\n".join(parts)

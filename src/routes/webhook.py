@@ -610,13 +610,13 @@ def handle_basic_commands(user_id, text):
     elif any(cmd in text_lower for cmd in ['סטטוס יומן', 'calendar status', 'מצב יומן']):
         return handle_calendar_status_command(user_id)
     
+    # Phase 2: Calendar settings (CHECK THIS FIRST - more specific than "יומן")
+    elif any(cmd in text_lower for cmd in ['הגדרות יומן', 'calendar settings', 'הגדרות סנכרון', 'settings calendar']):
+        return handle_calendar_settings_command(user_id)
+    
     # Phase 2: Show full schedule (tasks + calendar events)
     elif any(cmd in text_lower for cmd in ['הצג יומן', 'show calendar', 'יומן', 'calendar']):
         return handle_show_calendar_command(user_id)
-    
-    # Phase 2: Calendar settings
-    elif any(cmd in text_lower for cmd in ['הגדרות יומן', 'calendar settings', 'הגדרות סנכרון', 'settings calendar']):
-        return handle_calendar_settings_command(user_id)
     
     # Phase 2: Set calendar color
     elif text_lower.startswith('קבע צבע ') or text_lower.startswith('set color '):
