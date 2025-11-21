@@ -20,9 +20,10 @@ from ..models.database import db, Task, User, Message
 class SchedulerService:
     """Handle scheduled tasks like reminders"""
 
-    def __init__(self, redis_client=None, whatsapp_service=None):
+    def __init__(self, redis_client=None, whatsapp_service=None, calendar_sync_service=None):
         self.redis_client = redis_client
         self.whatsapp_service = whatsapp_service
+        self.calendar_sync_service = calendar_sync_service  # Phase 2: Calendar sync service
         self.scheduler = None
         self.israel_tz = pytz.timezone('Asia/Jerusalem')
 
@@ -158,6 +159,20 @@ class SchedulerService:
                 kwargs={'app': app}
             )
             print("Added midnight recurring task generation job")
+            
+            # Job 6: Sync Google Calendar (Phase 2) - every 1 minutes
+            if self.calendar_sync_service:
+                self.scheduler.add_job(
+                    func=self._sync_all_calendars,
+                    trigger="interval",
+                    minutes=1,
+                    id="sync_calendars",
+                    name="Sync Google Calendar for all users",
+                    kwargs={'app': app}
+                )
+                print("Added calendar sync job (every 10 minutes)")
+            else:
+                print("Calendar sync service not available - skipping calendar sync job")
 
             # Shutdown scheduler on exit
             atexit.register(self._shutdown_scheduler)
@@ -326,13 +341,38 @@ class SchedulerService:
                             summary_parts.append("")
                         
                         if tasks_due_today:
-                            summary_parts.append(f"📅 להיום ({len(tasks_due_today)}):")
+                            summary_parts.append(f"📅 משימות להיום ({len(tasks_due_today)}):")
                             for task in tasks_due_today[:5]:
                                 due_local = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
                                 summary_parts.append(f"  • {task.description[:50]} ({due_local.strftime('%H:%M')})")
                             if len(tasks_due_today) > 5:
                                 summary_parts.append(f"  ... ועוד {len(tasks_due_today) - 5}")
                             summary_parts.append("")
+                        
+                        # Phase 2: Add calendar events to daily summary
+                        if user.google_calendar_enabled and self.calendar_sync_service:
+                            try:
+                                from ..services.calendar_service import CalendarService
+                                calendar_service = CalendarService()
+                                
+                                # Fetch calendar events for today
+                                calendar_events = calendar_service.fetch_events(user, today_start, today_end, fetch_all=True)
+                                
+                                # Filter out events that are already tasks (deduplication)
+                                task_event_ids = {t.calendar_event_id for t in (tasks_due_today + overdue_tasks) if t.calendar_event_id}
+                                display_events = [e for e in calendar_events if e['id'] not in task_event_ids]
+                                
+                                if display_events:
+                                    summary_parts.append(f"📆 אירועים ביומן ({len(display_events)}):")
+                                    for event in display_events[:5]:
+                                        start_local = event['start'].astimezone(self.israel_tz)
+                                        end_local = event['end'].astimezone(self.israel_tz)
+                                        summary_parts.append(f"  • {event['title'][:50]} ({start_local.strftime('%H:%M')}-{end_local.strftime('%H:%M')})")
+                                    if len(display_events) > 5:
+                                        summary_parts.append(f"  ... ועוד {len(display_events) - 5}")
+                                    summary_parts.append("")
+                            except Exception as calendar_error:
+                                print(f"⚠️ Failed to fetch calendar events for daily summary: {calendar_error}")
                         
                         summary_parts.append("💪 בהצלחה היום!")
                         
@@ -806,6 +846,49 @@ class SchedulerService:
                     db.session.rollback()
             except:
                 pass
+    
+    def _sync_all_calendars(self, app):
+        """
+        Sync Google Calendar for all users with calendar enabled (Phase 2).
+        Called every 10 minutes by the scheduler.
+        """
+        if not self.calendar_sync_service:
+            print("⚠️ Calendar sync service not available")
+            return
+        
+        try:
+            with app.app_context():
+                from ..models.database import User
+                
+                # Get all users with calendar enabled
+                users = User.query.filter_by(google_calendar_enabled=True).all()
+                
+                if not users:
+                    print("📅 No users with calendar enabled")
+                    return
+                
+                print(f"📅 Starting calendar sync for {len(users)} users")
+                
+                total_created = 0
+                total_updated = 0
+                total_deleted = 0
+                
+                for user in users:
+                    try:
+                        created, updated, deleted = self.calendar_sync_service.sync_user_calendar(user)
+                        total_created += created
+                        total_updated += updated
+                        total_deleted += deleted
+                    except Exception as user_error:
+                        print(f"❌ Calendar sync failed for user {user.id}: {user_error}")
+                        continue
+                
+                print(f"✅ Calendar sync completed: +{total_created} ↻{total_updated} -{total_deleted}")
+                
+        except Exception as e:
+            print(f"❌ Error in calendar sync job: {e}")
+            import traceback
+            traceback.print_exc()
     
     def is_running(self):
         """Check if scheduler is running"""

@@ -568,6 +568,8 @@ def handle_basic_commands(user_id, text):
 • "חבר יומן" - התחבר ל-Google Calendar
 • "נתק יומן" - נתק את החיבור
 • "סטטוס יומן" - בדוק מצב חיבור
+• "הצג יומן" - הצג משימות ואירועים להיום
+• "הגדרות יומן" - הגדר צבעים וסנכרון אוטומטי
 
 🔧 **פקודות מהירות:**
 • עזרה - הצג עזרה זו
@@ -607,6 +609,22 @@ def handle_basic_commands(user_id, text):
     
     elif any(cmd in text_lower for cmd in ['סטטוס יומן', 'calendar status', 'מצב יומן']):
         return handle_calendar_status_command(user_id)
+    
+    # Phase 2: Show full schedule (tasks + calendar events)
+    elif any(cmd in text_lower for cmd in ['הצג יומן', 'show calendar', 'יומן', 'calendar']):
+        return handle_show_calendar_command(user_id)
+    
+    # Phase 2: Calendar settings
+    elif any(cmd in text_lower for cmd in ['הגדרות יומן', 'calendar settings', 'הגדרות סנכרון', 'settings calendar']):
+        return handle_calendar_settings_command(user_id)
+    
+    # Phase 2: Set calendar color
+    elif text_lower.startswith('קבע צבע ') or text_lower.startswith('set color '):
+        return handle_set_calendar_color_command(user_id, text)
+    
+    # Phase 2: Toggle hashtag detection
+    elif any(cmd in text_lower for cmd in ['כבה #', 'disable #', 'הפעל #', 'enable #', 'כבה סולמית', 'הפעל סולמית']):
+        return handle_toggle_hashtag_command(user_id, text_lower)
     
     return None
 
@@ -835,6 +853,215 @@ def handle_calendar_status_command(user_id):
     except Exception as e:
         print(f"❌ Error handling calendar status: {e}")
         return "❌ שגיאה בבדיקת סטטוס היומן. נסה שוב מאוחר יותר."
+
+def handle_show_calendar_command(user_id):
+    """Handle show calendar command - displays tasks + calendar events (Phase 2)"""
+    try:
+        from ..models.database import User
+        from ..app import ai_service
+        
+        user = User.query.get(user_id)
+        if not user:
+            return "❌ שגיאה: משתמש לא נמצא"
+        
+        if not user.google_calendar_enabled:
+            return """❌ היומן שלך לא מחובר.
+
+כתוב 'חבר יומן' כדי לחבר את Google Calendar שלך."""
+        
+        # Get full schedule (tasks + events) for today
+        if ai_service:
+            try:
+                schedule = ai_service.get_full_schedule(user, 'today')
+                return ai_service.format_schedule_response(schedule)
+            except Exception as e:
+                print(f"❌ Error getting full schedule: {e}")
+                return "❌ שגיאה בהצגת היומן. נסה שוב מאוחר יותר."
+        else:
+            return "❌ שירות היומן לא זמין כרגע. נסה שוב מאוחר יותר."
+            
+    except Exception as e:
+        print(f"❌ Error handling show calendar: {e}")
+        return "❌ שגיאה בהצגת היומן. נסה שוב מאוחר יותר."
+
+def handle_calendar_settings_command(user_id):
+    """Handle calendar settings command - show current settings and options (Phase 2)"""
+    try:
+        from ..models.database import User
+        
+        user = User.query.get(user_id)
+        if not user:
+            return "❌ שגיאה: משתמש לא נמצא"
+        
+        if not user.google_calendar_enabled:
+            return """❌ היומן שלך לא מחובר.
+
+חבר את היומן קודם (כתוב 'חבר יומן')."""
+        
+        # Show current settings
+        color_names = {
+            '1': 'Lavender (סגול בהיר)',
+            '2': 'Sage (ירוק חכם)',
+            '3': 'Grape (ענבים)',
+            '4': 'Flamingo (ורוד)',
+            '5': 'Banana (צהוב)',
+            '6': 'Tangerine (כתום)',
+            '7': 'Peacock (טורקיז)',
+            '8': 'Graphite (אפור)',
+            '9': 'Blueberry (כחול)',
+            '10': 'Basil (ירוק בזיליקום)',
+            '11': 'Tomato (אדום)'
+        }
+        
+        current_color = user.calendar_sync_color
+        if current_color:
+            color_display = f"{color_names.get(current_color, current_color)}"
+        else:
+            color_display = "לא מוגדר"
+        
+        hashtag_status = "מופעל ✅" if user.calendar_sync_hashtag else "כבוי ❌"
+        
+        message = f"""⚙️ **הגדרות סנכרון יומן**
+
+🎨 **צבע אירועים למשימות:** {color_display}
+#️⃣ **זיהוי סימן # בכותרת:** {hashtag_status}
+
+**איך זה עובד?**
+אירועים שיוצרים ב-Google Calendar עם הצבע שבחרת או עם # בכותרת יהפכו אוטומטית למשימות בבוט (תוך 10 דקות).
+
+**שינוי צבע:**
+כתוב "קבע צבע [מספר]" - למשל:
+• "קבע צבע 1" - Lavender
+• "קבע צבע 9" - Blueberry
+• "קבע צבע 11" - Tomato
+
+**זיהוי סימן #:**
+• "כבה #" - כיבוי זיהוי אוטומטי של #
+• "הפעל #" - הפעלה מחדש
+
+💡 **טיפ:** אם לא מגדיר צבע, רק אירועים עם # בכותרת יהפכו למשימות."""
+        
+        return message
+        
+    except Exception as e:
+        print(f"❌ Error handling calendar settings: {e}")
+        return "❌ שגיאה בהצגת הגדרות. נסה שוב מאוחר יותר."
+
+def handle_set_calendar_color_command(user_id, text):
+    """Handle set calendar color command (Phase 2)"""
+    try:
+        from ..models.database import User, db
+        
+        user = User.query.get(user_id)
+        if not user:
+            return "❌ שגיאה: משתמש לא נמצא"
+        
+        if not user.google_calendar_enabled:
+            return "❌ חבר את היומן קודם (כתוב 'חבר יומן')"
+        
+        # Extract color ID
+        text_lower = text.lower().strip()
+        if text_lower.startswith('קבע צבע '):
+            color_id = text_lower.replace('קבע צבע ', '').strip()
+        elif text_lower.startswith('set color '):
+            color_id = text_lower.replace('set color ', '').strip()
+        else:
+            return "❌ פורמט לא נכון. כתוב: 'קבע צבע [מספר]' (למשל: 'קבע צבע 1')"
+        
+        # Validate color ID (1-11)
+        valid_colors = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']
+        if color_id not in valid_colors:
+            return f"""❌ מספר צבע לא תקין. בחר מספר בין 1-11:
+
+1 - Lavender (סגול בהיר)
+2 - Sage (ירוק חכם)
+3 - Grape (ענבים)
+4 - Flamingo (ורוד)
+5 - Banana (צהוב)
+6 - Tangerine (כתום)
+7 - Peacock (טורקיז)
+8 - Graphite (אפור)
+9 - Blueberry (כחול)
+10 - Basil (ירוק)
+11 - Tomato (אדום)"""
+        
+        # Update user settings
+        user.calendar_sync_color = color_id
+        db.session.commit()
+        
+        color_names = {
+            '1': 'Lavender', '2': 'Sage', '3': 'Grape', '4': 'Flamingo',
+            '5': 'Banana', '6': 'Tangerine', '7': 'Peacock', '8': 'Graphite',
+            '9': 'Blueberry', '10': 'Basil', '11': 'Tomato'
+        }
+        
+        print(f"✅ User {user_id} set calendar color to {color_id}")
+        
+        return f"""✅ **צבע עודכן בהצלחה!**
+
+🎨 צבע: {color_names.get(color_id, color_id)}
+
+עכשיו, כל אירוע שתיצור ב-Google Calendar בצבע {color_names.get(color_id, color_id)} יהפוך אוטומטית למשימה בבוט תוך 10 דקות!
+
+💡 זיהוי # עדיין פעיל - אירועים עם # בכותרת גם יהפכו למשימות."""
+        
+    except Exception as e:
+        print(f"❌ Error setting calendar color: {e}")
+        db.session.rollback()
+        return "❌ שגיאה בעדכון הצבע. נסה שוב."
+
+def handle_toggle_hashtag_command(user_id, text_lower):
+    """Handle toggle hashtag detection command (Phase 2)"""
+    try:
+        from ..models.database import User, db
+        
+        user = User.query.get(user_id)
+        if not user:
+            return "❌ שגיאה: משתמש לא נמצא"
+        
+        if not user.google_calendar_enabled:
+            return "❌ חבר את היומן קודם (כתוב 'חבר יומן')"
+        
+        # Determine if enabling or disabling
+        enable = any(cmd in text_lower for cmd in ['הפעל #', 'enable #', 'הפעל סולמית'])
+        disable = any(cmd in text_lower for cmd in ['כבה #', 'disable #', 'כבה סולמית'])
+        
+        if enable:
+            user.calendar_sync_hashtag = True
+            db.session.commit()
+            print(f"✅ User {user_id} enabled hashtag detection")
+            return """✅ **זיהוי # הופעל!**
+
+#️⃣ אירועים עם סימן # בכותרת יהפכו אוטומטית למשימות.
+
+דוגמה: אירוע בשם "# לקנות מצרכים" יהפוך למשימה."""
+        
+        elif disable:
+            user.calendar_sync_hashtag = False
+            db.session.commit()
+            print(f"✅ User {user_id} disabled hashtag detection")
+            
+            if user.calendar_sync_color:
+                return f"""✅ **זיהוי # כובה**
+
+#️⃣ אירועים עם # לא יהפכו יותר למשימות אוטומטית.
+
+💡 רק אירועים בצבע {user.calendar_sync_color} יהפכו למשימות."""
+            else:
+                return """⚠️ **זיהוי # כובה**
+
+#️⃣ אירועים עם # לא יהפכו יותר למשימות אוטומטית.
+
+⚠️ שים לב: לא הגדרת צבע! אירועים לא יהפכו למשימות.
+כתוב 'הגדרות יומן' כדי להגדיר צבע."""
+        
+        else:
+            return "❌ פקודה לא מזוהה. כתוב 'הפעל #' או 'כבה #'"
+        
+    except Exception as e:
+        print(f"❌ Error toggling hashtag: {e}")
+        db.session.rollback()
+        return "❌ שגיאה בעדכון ההגדרות. נסה שוב."
 
 def handle_button_click(user_id, button_id):
     """Handle button click"""

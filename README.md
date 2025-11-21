@@ -275,13 +275,25 @@ Seamlessly sync your tasks to Google Calendar for a unified view of your schedul
 
 #### Features
 
+**Bot → Calendar (Phase 1):**
 - **Automatic Event Creation**: Tasks with `due_date` → Calendar events automatically
 - **Default Duration**: Events are 1 hour long by default
 - **Real-Time Sync**: Updates and reschedules sync immediately
 - **Recurring Tasks Support**: Recurring instances also sync to calendar
+- **Smart Completion**: Completing tasks marks calendar events as done
+
+**Calendar → Bot (Phase 2):**
+- **Two-Way Sync**: Changes in calendar sync back to bot (every 10 minutes)
+- **Smart Filtering**: Only events with specific color or '#' become tasks
+- **Unified View**: "הצג יומן" shows both tasks and calendar events
+- **No Duplication**: Events already linked to tasks don't show twice
+- **Last Write Wins**: Latest change (bot or calendar) always wins
+
+**Security & Performance:**
 - **Secure Storage**: Google tokens encrypted at rest (AES-256)
 - **Auto-Refresh**: Tokens automatically refreshed - no re-authorization needed
 - **Non-Fatal Errors**: Calendar sync failures don't break task creation
+- **On-Demand Fetching**: Calendar events fetched when needed (not stored)
 
 #### Usage Examples
 
@@ -305,6 +317,59 @@ Bot: "✅ הושלמה משימה"
 
 You: "סטטוס יומן"
 Bot: "✅ היומן שלך מחובר!"
+
+You: "הצג יומן"
+Bot: 
+"📋 המשימות שלך (2):
+⬜ לקנות חלב (15:00)
+⬜ להתקשר לרופא
+
+📅 אירועים ביומן (2):
+🕐 10:00-11:00 פגישה עם לקוח
+🕒 14:00-15:00 ישיבת צוות"
+```
+
+#### Calendar Settings (Phase 2)
+
+Configure automatic event-to-task conversion:
+
+**View Settings:**
+```
+You: "הגדרות יומן"
+Bot: Shows current color and hashtag settings
+```
+
+**Set Event Color:**
+```
+You: "קבע צבע 9"  (Blueberry/Blue)
+Bot: "✅ צבע עודכן בהצלחה!"
+```
+
+**Available Colors:**
+- `1` - Lavender (סגול בהיר)
+- `2` - Sage (ירוק חכם)
+- `3` - Grape (ענבים)
+- `4` - Flamingo (ורוד)
+- `5` - Banana (צהוב)
+- `6` - Tangerine (כתום)
+- `7` - Peacock (טורקיז)
+- `8` - Graphite (אפור)
+- `9` - Blueberry (כחול)
+- `10` - Basil (ירוק)
+- `11` - Tomato (אדום)
+
+**Toggle Hashtag Detection:**
+```
+You: "כבה #"  or  "הפעל #"
+Bot: Toggles automatic detection of '#' in event titles
+```
+
+**How It Works:**
+1. Create event in Google Calendar with selected color OR '#' in title
+2. Within 10 minutes, bot automatically creates a task
+3. Changes in bot update calendar immediately
+4. Changes in calendar update bot within 10 minutes
+5. Last change always wins (no conflicts!)
 ```
 
 #### Calendar Commands
@@ -314,15 +379,30 @@ Bot: "✅ היומן שלך מחובר!"
 | **Connect Calendar** | `חבר יומן` | `connect calendar` | Get OAuth link to connect Google Calendar |
 | **Disconnect Calendar** | `נתק יומן` | `disconnect calendar` | Disconnect calendar integration |
 | **Calendar Status** | `סטטוס יומן` | `calendar status` | Check connection status |
+| **Show Schedule** | `הצג יומן` | `show calendar` | Display today's tasks + calendar events |
+| **Calendar Settings** | `הגדרות יומן` | `calendar settings` | Configure color & hashtag sync |
+| **Set Event Color** | `קבע צבע [1-11]` | `set color [1-11]` | Set which color events become tasks |
+| **Toggle Hashtag** | `הפעל #` / `כבה #` | `enable #` / `disable #` | Toggle '#' detection in event titles |
 
 #### Technical Details
 
+**Phase 1 (Bot → Calendar):**
 - **OAuth 2.0 Flow**: Secure Google authorization via web page
 - **Token Management**: Access and refresh tokens encrypted and stored securely
+- **Immediate Sync**: Task changes update calendar instantly
+- **Recurring Instances**: Each recurring task instance gets its own calendar event
+
+**Phase 2 (Calendar → Bot):**
+- **Background Worker**: Syncs calendar changes every 10 minutes
+- **Smart Filtering**: Only events with configured color or '#' become tasks
+- **Conflict Resolution**: Last write wins (no merge conflicts)
+- **Deduplication**: Events already linked to tasks don't show twice
+- **On-Demand Fetching**: Calendar events fetched when needed (not stored)
+
+**General:**
 - **Timezone Handling**: All events use Israel timezone (Asia/Jerusalem)
 - **Event Metadata**: Task description, due date, and completion status synced
 - **Error Handling**: Calendar sync is non-fatal - tasks work even if sync fails
-- **Recurring Instances**: Each recurring task instance gets its own calendar event
 
 ### 🛡️ Security & Privacy
 

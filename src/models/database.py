@@ -24,6 +24,11 @@ class User(db.Model):
     google_token_expiry = db.Column(db.DateTime, nullable=True)
     google_calendar_id = db.Column(db.String(255), nullable=True)  # Default calendar ID
     
+    # Phase 2: Calendar sync tracking
+    calendar_sync_color = db.Column(db.String(50), nullable=True)  # Color ID for auto-task detection
+    calendar_sync_hashtag = db.Column(db.Boolean, default=True, nullable=False)  # Enable '#' detection
+    last_calendar_sync = db.Column(db.DateTime, nullable=True)  # Last successful sync timestamp
+    
     @property
     def phone_number(self):
         """Decrypt and return phone number"""
@@ -159,10 +164,15 @@ class Task(db.Model):
     recurring_instance_count = db.Column(db.Integer, default=0)
     recurring_max_instances = db.Column(db.Integer, default=100)
     
-    # Calendar sync fields
+    # Calendar sync fields (Phase 1)
     calendar_event_id = db.Column(db.String(255), nullable=True)
     calendar_synced = db.Column(db.Boolean, default=False, nullable=False)
     calendar_sync_error = db.Column(db.Text, nullable=True)
+    
+    # Phase 2: Two-way sync tracking
+    last_modified_at = db.Column(db.DateTime, nullable=True)  # Last change timestamp in bot
+    calendar_last_modified = db.Column(db.DateTime, nullable=True)  # Last change timestamp in calendar
+    created_from_calendar = db.Column(db.Boolean, default=False, nullable=False)  # True if originated from calendar
     
     # Recurring relationship (self-referential)
     recurring_instances = db.relationship('Task',

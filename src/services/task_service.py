@@ -13,9 +13,10 @@ from ..models.database import db, Task, User
 class TaskService:
     """Handle task-related operations"""
     
-    def __init__(self, calendar_service=None):
+    def __init__(self, calendar_service=None, ai_service=None):
         self.israel_tz = pytz.timezone('Asia/Jerusalem')
         self.calendar_service = calendar_service  # Optional calendar service for sync
+        self.ai_service = ai_service  # Phase 2: For fetching full schedule with calendar events
     
     def create_task(self, user_id: int, description: str, due_date: datetime = None) -> Task:
         """Create a new task for user"""
@@ -24,7 +25,8 @@ class TaskService:
                 user_id=user_id,
                 description=description.strip()[:500],  # Limit description length
                 due_date=due_date,
-                status='pending'
+                status='pending',
+                last_modified_at=datetime.utcnow()  # Track modification for Phase 2 sync
             )
             
             db.session.add(task)
@@ -88,6 +90,7 @@ class TaskService:
             task.status = 'completed'
             task.completed_at = datetime.utcnow()
             task.updated_at = datetime.utcnow()
+            task.last_modified_at = datetime.utcnow()  # Track modification for Phase 2 sync
             
             db.session.commit()
             
@@ -441,6 +444,7 @@ class TaskService:
                 task.reminder_sent = False  # Reset reminder if date changed
             
             task.updated_at = datetime.utcnow()
+            task.last_modified_at = datetime.utcnow()  # Track modification for Phase 2 sync
             db.session.commit()
             
             # Update calendar event if exists
@@ -1220,6 +1224,20 @@ class TaskService:
                     
                     tasks = query.order_by(Task.due_date.asc()).all()
                     
+                    # Phase 2: Use get_full_schedule for today/tomorrow to include calendar events
+                    if self.ai_service and key in ['today', 'tomorrow', 'this week'] and key != 'yesterday':
+                        try:
+                            user = User.query.get(user_id)
+                            if user and user.google_calendar_enabled:
+                                # Use AI service to get full schedule (tasks + events)
+                                date_filter_map = {'today': 'today', 'tomorrow': 'tomorrow', 'this week': 'week'}
+                                schedule = self.ai_service.get_full_schedule(user, date_filter_map[key])
+                                return self.ai_service.format_schedule_response(schedule)
+                        except Exception as e:
+                            print(f"⚠️ Failed to get full schedule: {e}")
+                            # Fall through to tasks-only display
+                    
+                    # Fallback: tasks only (or if calendar not enabled)
                     if not tasks:
                         return f"📋 אין לך משימות ל{date_display}"
                     

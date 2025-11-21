@@ -14,6 +14,7 @@ from .services.task_service import TaskService
 from .services.scheduler_service import SchedulerService
 from .services.monitoring_service import MonitoringService
 from .services.calendar_service import CalendarService
+from .services.calendar_sync_service import CalendarSyncService
 
 # Global service instances
 ai_service = None
@@ -46,10 +47,16 @@ def create_app(config_name=None, process_role='web'):
     # Initialize services
     global ai_service, whatsapp_service, task_service, scheduler_service, monitoring_service
     try:
-        ai_service = AIService(redis_client=redis_client)
-        whatsapp_service = WhatsAppService(redis_client=redis_client)
         calendar_service = CalendarService()
-        task_service = TaskService(calendar_service=calendar_service)
+        ai_service = AIService(redis_client=redis_client, calendar_service=calendar_service)
+        whatsapp_service = WhatsAppService(redis_client=redis_client)
+        task_service = TaskService(calendar_service=calendar_service, ai_service=ai_service)
+        
+        # Phase 2: Initialize calendar sync service
+        calendar_sync_service = CalendarSyncService(
+            calendar_service=calendar_service,
+            task_service=task_service
+        )
         
         # Initialize monitoring service
         monitoring_service = MonitoringService(
@@ -61,7 +68,8 @@ def create_app(config_name=None, process_role='web'):
         if process_role == 'worker':
             scheduler_service = SchedulerService(
                 redis_client=redis_client, 
-                whatsapp_service=whatsapp_service
+                whatsapp_service=whatsapp_service,
+                calendar_sync_service=calendar_sync_service  # Phase 2: Pass calendar sync service
             )
             scheduler_service.initialize_scheduler(app)
             print("Scheduler service initialized for worker process")

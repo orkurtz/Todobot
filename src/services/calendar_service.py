@@ -557,4 +557,296 @@ class CalendarService:
             print(f"❌ Failed to disconnect calendar: {e}")
             db.session.rollback()
             return False, str(e)
+    
+    # ========== PHASE 2: CALENDAR FETCHING & FILTERING ==========
+    
+    def fetch_events(self, user: User, start_date: datetime, end_date: datetime, fetch_all: bool = False) -> list:
+        """
+        Fetch events from Google Calendar between dates.
+        
+        Args:
+            user: User object
+            start_date: Start datetime (timezone-aware)
+            end_date: End datetime (timezone-aware)
+            fetch_all: If False, only return events matching task criteria
+        
+        Returns:
+            List of event dicts: {id, title, start, end, colorId, updated, description}
+        """
+        try:
+            if not user.google_calendar_enabled:
+                return []
+            
+            credentials = self.get_credentials(user)
+            if not credentials:
+                return []
+            
+            service = build('calendar', 'v3', credentials=credentials)
+            
+            # Ensure dates are timezone-aware (Israel timezone)
+            if start_date.tzinfo is None:
+                start_date = pytz.UTC.localize(start_date).astimezone(self.israel_tz)
+            else:
+                start_date = start_date.astimezone(self.israel_tz)
+            
+            if end_date.tzinfo is None:
+                end_date = pytz.UTC.localize(end_date).astimezone(self.israel_tz)
+            else:
+                end_date = end_date.astimezone(self.israel_tz)
+            
+            # Fetch events from Google Calendar
+            events_result = service.events().list(
+                calendarId=user.google_calendar_id or 'primary',
+                timeMin=start_date.isoformat(),
+                timeMax=end_date.isoformat(),
+                singleEvents=True,  # Expand recurring events
+                orderBy='startTime'
+            ).execute()
+            
+            events_raw = events_result.get('items', [])
+            
+            # Parse events
+            events = []
+            for event in events_raw:
+                # Parse start and end times
+                start = event.get('start', {})
+                end = event.get('end', {})
+                
+                # Handle all-day events vs timed events
+                if 'dateTime' in start:
+                    start_dt = datetime.fromisoformat(start['dateTime'].replace('Z', '+00:00'))
+                elif 'date' in start:
+                    # All-day event
+                    start_dt = datetime.fromisoformat(start['date'] + 'T00:00:00').replace(tzinfo=self.israel_tz)
+                else:
+                    continue  # Skip events without start time
+                
+                if 'dateTime' in end:
+                    end_dt = datetime.fromisoformat(end['dateTime'].replace('Z', '+00:00'))
+                elif 'date' in end:
+                    end_dt = datetime.fromisoformat(end['date'] + 'T23:59:59').replace(tzinfo=self.israel_tz)
+                else:
+                    end_dt = start_dt + timedelta(hours=1)
+                
+                # Parse updated timestamp
+                updated_str = event.get('updated')
+                if updated_str:
+                    updated_dt = datetime.fromisoformat(updated_str.replace('Z', '+00:00'))
+                else:
+                    updated_dt = None
+                
+                event_dict = {
+                    'id': event['id'],
+                    'title': event.get('summary', '(No title)'),
+                    'start': start_dt,
+                    'end': end_dt,
+                    'colorId': event.get('colorId'),
+                    'updated': updated_dt,
+                    'description': event.get('description', ''),
+                    'status': event.get('status', 'confirmed'),
+                    'transparency': event.get('transparency', 'opaque')  # 'transparent' = free time
+                }
+                
+                # Filter by task criteria if requested
+                if fetch_all or self.is_task_event(event_dict, user):
+                    events.append(event_dict)
+            
+            print(f"📅 Fetched {len(events)} events for user {user.id} (fetch_all={fetch_all})")
+            return events
+            
+        except HttpError as e:
+            if e.resp.status in [401, 403]:
+                self._disable_calendar_for_user(user, f"Failed to fetch events: HTTP {e.resp.status}")
+            print(f"❌ Failed to fetch calendar events for user {user.id}: {e}")
+            return []
+        except Exception as e:
+            print(f"❌ Failed to fetch calendar events for user {user.id}: {e}")
+            return []
+    
+    def is_task_event(self, event: Dict[str, Any], user: User) -> bool:
+        """
+        Check if calendar event should be converted to task.
+        
+        Criteria:
+        - Event color matches user.calendar_sync_color OR
+        - Event title contains '#' (if user.calendar_sync_hashtag enabled)
+        
+        Args:
+            event: Event dict from fetch_events()
+            user: User object
+        
+        Returns:
+            bool
+        """
+        # Check color match
+        if user.calendar_sync_color and event.get('colorId') == user.calendar_sync_color:
+            return True
+        
+        # Check hashtag
+        if user.calendar_sync_hashtag and '#' in event.get('title', ''):
+            return True
+        
+        return False
+    
+    def get_event_updated_time(self, event: Dict[str, Any]) -> Optional[datetime]:
+        """
+        Extract last modified timestamp from event.
+        
+        Args:
+            event: Event dict from fetch_events()
+        
+        Returns:
+            datetime or None
+        """
+        return event.get('updated')
+    
+    def get_recurring_instances(self, user: User, recurring_event_id: str, days_ahead: int = 30) -> list:
+        """
+        Fetch instances of a recurring event.
+        
+        Args:
+            user: User object
+            recurring_event_id: ID of the recurring event
+            days_ahead: How many days ahead to fetch instances
+        
+        Returns:
+            List of event instance dicts
+        """
+        try:
+            if not user.google_calendar_enabled:
+                return []
+            
+            credentials = self.get_credentials(user)
+            if not credentials:
+                return []
+            
+            service = build('calendar', 'v3', credentials=credentials)
+            
+            # Calculate time range
+            now = datetime.now(self.israel_tz)
+            end_date = now + timedelta(days=days_ahead)
+            
+            # Fetch instances
+            events_result = service.events().instances(
+                calendarId=user.google_calendar_id or 'primary',
+                eventId=recurring_event_id,
+                timeMin=now.isoformat(),
+                timeMax=end_date.isoformat()
+            ).execute()
+            
+            instances_raw = events_result.get('items', [])
+            
+            # Parse instances (same logic as fetch_events)
+            instances = []
+            for instance in instances_raw:
+                start = instance.get('start', {})
+                end = instance.get('end', {})
+                
+                if 'dateTime' in start:
+                    start_dt = datetime.fromisoformat(start['dateTime'].replace('Z', '+00:00'))
+                elif 'date' in start:
+                    start_dt = datetime.fromisoformat(start['date'] + 'T00:00:00').replace(tzinfo=self.israel_tz)
+                else:
+                    continue
+                
+                if 'dateTime' in end:
+                    end_dt = datetime.fromisoformat(end['dateTime'].replace('Z', '+00:00'))
+                elif 'date' in end:
+                    end_dt = datetime.fromisoformat(end['date'] + 'T23:59:59').replace(tzinfo=self.israel_tz)
+                else:
+                    end_dt = start_dt + timedelta(hours=1)
+                
+                updated_str = instance.get('updated')
+                updated_dt = datetime.fromisoformat(updated_str.replace('Z', '+00:00')) if updated_str else None
+                
+                instance_dict = {
+                    'id': instance['id'],
+                    'title': instance.get('summary', '(No title)'),
+                    'start': start_dt,
+                    'end': end_dt,
+                    'colorId': instance.get('colorId'),
+                    'updated': updated_dt,
+                    'description': instance.get('description', ''),
+                    'status': instance.get('status', 'confirmed'),
+                    'transparency': instance.get('transparency', 'opaque'),
+                    'recurring_event_id': recurring_event_id
+                }
+                
+                instances.append(instance_dict)
+            
+            print(f"📅 Fetched {len(instances)} instances of recurring event {recurring_event_id}")
+            return instances
+            
+        except Exception as e:
+            print(f"❌ Failed to fetch recurring event instances: {e}")
+            return []
+    
+    def fetch_event_by_id(self, user: User, event_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch single event details by ID.
+        
+        Args:
+            user: User object
+            event_id: Calendar event ID
+        
+        Returns:
+            Event dict or None
+        """
+        try:
+            if not user.google_calendar_enabled:
+                return None
+            
+            credentials = self.get_credentials(user)
+            if not credentials:
+                return None
+            
+            service = build('calendar', 'v3', credentials=credentials)
+            
+            event = service.events().get(
+                calendarId=user.google_calendar_id or 'primary',
+                eventId=event_id
+            ).execute()
+            
+            # Parse event
+            start = event.get('start', {})
+            end = event.get('end', {})
+            
+            if 'dateTime' in start:
+                start_dt = datetime.fromisoformat(start['dateTime'].replace('Z', '+00:00'))
+            elif 'date' in start:
+                start_dt = datetime.fromisoformat(start['date'] + 'T00:00:00').replace(tzinfo=self.israel_tz)
+            else:
+                return None
+            
+            if 'dateTime' in end:
+                end_dt = datetime.fromisoformat(end['dateTime'].replace('Z', '+00:00'))
+            elif 'date' in end:
+                end_dt = datetime.fromisoformat(end['date'] + 'T23:59:59').replace(tzinfo=self.israel_tz)
+            else:
+                end_dt = start_dt + timedelta(hours=1)
+            
+            updated_str = event.get('updated')
+            updated_dt = datetime.fromisoformat(updated_str.replace('Z', '+00:00')) if updated_str else None
+            
+            return {
+                'id': event['id'],
+                'title': event.get('summary', '(No title)'),
+                'start': start_dt,
+                'end': end_dt,
+                'colorId': event.get('colorId'),
+                'updated': updated_dt,
+                'description': event.get('description', ''),
+                'status': event.get('status', 'confirmed'),
+                'transparency': event.get('transparency', 'opaque')
+            }
+            
+        except HttpError as e:
+            if e.resp.status == 404:
+                print(f"⚠️ Event {event_id} not found")
+                return None
+            print(f"❌ Failed to fetch event {event_id}: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ Failed to fetch event {event_id}: {e}")
+            return None
 

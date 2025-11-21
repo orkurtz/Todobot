@@ -18,7 +18,7 @@ from ..utils.circuit_breaker import CircuitBreaker
 class AIService:
     """Handle AI-related operations including Gemini API calls"""
     
-    def __init__(self, redis_client=None):
+    def __init__(self, redis_client=None, calendar_service=None):
         self.api_key = os.getenv('GEMINI_API_KEY')
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY environment variable is required")
@@ -42,6 +42,9 @@ class AIService:
             failure_threshold=3,
             recovery_timeout=60
         )
+        
+        # Phase 2: Calendar service for fetching events
+        self.calendar_service = calendar_service
         
         # Load prompts
         self.prompts = self._load_prompts()
@@ -562,3 +565,119 @@ Always include the transcription for transparency.
         self.circuit_breaker.failure_count = 0
         self.circuit_breaker.last_failure_time = None
         self.circuit_breaker.next_attempt_time = None
+    
+    # ========== PHASE 2: CALENDAR INTEGRATION ==========
+    
+    def get_full_schedule(self, user, date_filter='today'):
+        """
+        Get tasks + calendar events for display, filtering duplicates.
+        
+        Args:
+            user: User object
+            date_filter: 'today', 'tomorrow', 'week', etc.
+        
+        Returns:
+            Dict with {'tasks': [...], 'events': [...]}
+        """
+        from ..models.database import Task
+        import pytz
+        from datetime import datetime, timedelta
+        
+        israel_tz = pytz.timezone('Asia/Jerusalem')
+        
+        # Calculate date range based on filter
+        now_israel = datetime.now(israel_tz)
+        
+        if date_filter == 'today':
+            start_israel = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_israel = start_israel + timedelta(days=1)
+        elif date_filter == 'tomorrow':
+            start_israel = (now_israel + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_israel = start_israel + timedelta(days=1)
+        elif date_filter == 'week':
+            start_israel = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_israel = start_israel + timedelta(days=7)
+        else:
+            # Default to today
+            start_israel = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_israel = start_israel + timedelta(days=1)
+        
+        # Convert to UTC for database query
+        start_utc = start_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+        end_utc = end_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        # Get tasks for date range
+        tasks = Task.query.filter(
+            Task.user_id == user.id,
+            Task.status == 'pending',
+            Task.is_recurring == False,  # Only show instances, not patterns
+            Task.due_date >= start_utc,
+            Task.due_date < end_utc
+        ).order_by(Task.due_date.asc()).all()
+        
+        # Fetch calendar events if enabled
+        events = []
+        if self.calendar_service and user.google_calendar_enabled:
+            try:
+                # Fetch ALL calendar events for the date range
+                all_events = self.calendar_service.fetch_events(user, start_utc, end_utc, fetch_all=True)
+                
+                # CRITICAL: Filter out events that are already tasks (deduplication)
+                task_event_ids = {t.calendar_event_id for t in tasks if t.calendar_event_id}
+                events = [e for e in all_events if e['id'] not in task_event_ids]
+                
+                print(f"📅 Schedule for user {user.id}: {len(tasks)} tasks, {len(events)} events (deduplicated from {len(all_events)} total)")
+            except Exception as e:
+                print(f"⚠️ Failed to fetch calendar events: {e}")
+                events = []
+        
+        return {
+            'tasks': tasks,
+            'events': events
+        }
+    
+    def format_schedule_response(self, schedule_data):
+        """
+        Format schedule with separate sections for tasks and events.
+        
+        Args:
+            schedule_data: Dict from get_full_schedule()
+        
+        Returns:
+            Formatted string for WhatsApp
+        """
+        import pytz
+        
+        israel_tz = pytz.timezone('Asia/Jerusalem')
+        tasks = schedule_data.get('tasks', [])
+        events = schedule_data.get('events', [])
+        
+        if not tasks and not events:
+            return "📋 אין לך משימות או אירועים להיום!"
+        
+        parts = []
+        
+        # Section 1: Tasks
+        if tasks:
+            parts.append(f"📋 המשימות שלך ({len(tasks)}):")
+            for i, task in enumerate(tasks, 1):
+                checkbox = "✅" if task.status == 'completed' else "⬜"
+                
+                if task.due_date:
+                    local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(israel_tz)
+                    time_str = local_time.strftime('%H:%M')
+                    parts.append(f"{checkbox} {task.description[:50]} ({time_str})")
+                else:
+                    parts.append(f"{checkbox} {task.description[:50]}")
+            
+            parts.append("")  # Empty line separator
+        
+        # Section 2: Calendar Events (non-task events)
+        if events:
+            parts.append(f"📅 אירועים ביומן ({len(events)}):")
+            for event in events:
+                start_time = event['start'].astimezone(israel_tz).strftime('%H:%M')
+                end_time = event['end'].astimezone(israel_tz).strftime('%H:%M')
+                parts.append(f"🕐 {start_time}-{end_time} {event['title'][:50]}")
+        
+        return "\n".join(parts)
