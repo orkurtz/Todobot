@@ -8,6 +8,7 @@ import pytz
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -28,6 +29,12 @@ class CalendarService:
         # Validate configuration
         if not self.client_id or not self.client_secret:
             print("⚠️ Warning: Google Calendar credentials not configured. Calendar integration will not work.")
+
+    def _is_token_error(self, error: Exception) -> bool:
+        """Check if error is related to invalid/revoked token"""
+        error_str = str(error).lower()
+        token_errors = ['invalid_grant', 'invalid_token', 'token_expired', 'invalid_request', 'unauthorized']
+        return any(err in error_str for err in token_errors)
     
     def get_authorization_url(self, user_id: int) -> str:
         """Generate OAuth authorization URL for user to connect their calendar"""
@@ -108,13 +115,82 @@ class CalendarService:
             db.session.commit()
             
             print(f"✅ Calendar connected for user {user_id}")
-            return True, "Calendar connected successfully!"
+            
+            # Retry failed syncs immediately
+            retry_count = self._retry_failed_syncs(user_id)
+            
+            message = "Calendar connected successfully!"
+            if retry_count > 0:
+                message += f"\nSynced {retry_count} missing tasks."
+                
+            return True, message
             
         except Exception as e:
             print(f"❌ OAuth callback error: {e}")
             db.session.rollback()
             return False, f"Failed to connect calendar: {str(e)}"
     
+    def _retry_failed_syncs(self, user_id: int) -> int:
+        """
+        Retry syncing tasks that failed during downtime.
+        
+        Finds:
+        1. Tasks with due_date but no calendar_event_id (never synced)
+        2. Tasks with calendar_sync_error (failed update/creation)
+        
+        Returns:
+            Number of successfully synced tasks
+        """
+        synced_count = 0
+        try:
+            user = User.query.get(user_id)
+            if not user or not user.google_calendar_enabled:
+                return 0
+            
+            # 1. Find pending tasks with due date but no calendar event (creation failed)
+            unsynced_tasks = Task.query.filter(
+                Task.user_id == user_id,
+                Task.status == 'pending',
+                Task.due_date.isnot(None),
+                Task.calendar_event_id.is_(None),
+                Task.created_from_calendar == False
+            ).all()
+            
+            # 2. Find tasks with sync errors (update failed)
+            error_tasks = Task.query.filter(
+                Task.user_id == user_id,
+                Task.calendar_sync_error.isnot(None)
+            ).all()
+            
+            # Combine and deduplicate
+            tasks_to_retry = list({t.id: t for t in (unsynced_tasks + error_tasks)}.values())
+            
+            print(f"🔄 Retrying sync for {len(tasks_to_retry)} tasks for user {user_id}")
+            
+            for task in tasks_to_retry:
+                try:
+                    success = False
+                    if not task.calendar_event_id:
+                        # Try create
+                        success, _, _ = self.create_calendar_event(task)
+                    else:
+                        # Try update
+                        success, _ = self.update_calendar_event(task)
+                    
+                    if success:
+                        synced_count += 1
+                except Exception as e:
+                    print(f"⚠️ Failed to retry sync for task {task.id}: {e}")
+            
+            if synced_count > 0:
+                print(f"✅ Successfully recovered {synced_count} tasks for user {user_id}")
+                
+            return synced_count
+            
+        except Exception as e:
+            print(f"❌ Error during sync recovery: {e}")
+            return 0
+
     def get_credentials(self, user: User) -> Optional[Credentials]:
         """Get and refresh Google credentials for user"""
         if not user.google_calendar_enabled:
@@ -277,6 +353,16 @@ class CalendarService:
                 return False, None, error_msg
             
         except Exception as e:
+            # Check for token errors that weren't caught by HttpError
+            if isinstance(e, RefreshError) or self._is_token_error(e):
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, f"Token invalid or revoked: {e}")
+                error_msg = "Calendar token expired. Please reconnect."
+                task.calendar_sync_error = error_msg
+                db.session.commit()
+                return False, None, error_msg
+                
             error_msg = f"Failed to create calendar event: {str(e)}"
             print(f"❌ {error_msg}")
             task.calendar_sync_error = error_msg
@@ -368,6 +454,13 @@ class CalendarService:
                 return False, error_msg
             
         except Exception as e:
+            # Check for token errors that weren't caught by HttpError
+            if isinstance(e, RefreshError) or self._is_token_error(e):
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, f"Token invalid or revoked: {e}")
+                return False, "Calendar token expired. Please reconnect."
+
             error_msg = f"Failed to update calendar event: {str(e)}"
             print(f"❌ {error_msg}")
             return False, error_msg
@@ -433,6 +526,13 @@ class CalendarService:
                 return False, error_msg
             
         except Exception as e:
+            # Check for token errors that weren't caught by HttpError
+            if isinstance(e, RefreshError) or self._is_token_error(e):
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, f"Token invalid or revoked: {e}")
+                return False, "Calendar token expired. Please reconnect."
+
             error_msg = f"Failed to delete calendar event: {str(e)}"
             print(f"❌ {error_msg}")
             return False, error_msg
@@ -501,6 +601,13 @@ class CalendarService:
                 print(f"⚠️ Failed to mark event as completed: {e}")
                 return True, None
         except Exception as e:
+            # Check for token errors that weren't caught by HttpError
+            if isinstance(e, RefreshError) or self._is_token_error(e):
+                user = User.query.get(task.user_id)
+                if user:
+                    self._disable_calendar_for_user(user, f"Token invalid or revoked: {e}")
+                return True, None
+
             # Don't fail task completion if calendar update fails
             print(f"⚠️ Failed to mark event as completed: {e}")
             return True, None  # Return success anyway
@@ -660,6 +767,10 @@ class CalendarService:
             print(f"❌ Failed to fetch calendar events for user {user.id}: {e}")
             return []
         except Exception as e:
+            # Check for token errors
+            if isinstance(e, RefreshError) or self._is_token_error(e):
+                self._disable_calendar_for_user(user, f"Token invalid or revoked: {e}")
+            
             print(f"❌ Failed to fetch calendar events for user {user.id}: {e}")
             return []
     
@@ -778,6 +889,10 @@ class CalendarService:
             return instances
             
         except Exception as e:
+            # Check for token errors
+            if isinstance(e, RefreshError) or self._is_token_error(e):
+                self._disable_calendar_for_user(user, f"Token invalid or revoked: {e}")
+                
             print(f"❌ Failed to fetch recurring event instances: {e}")
             return []
     
@@ -847,6 +962,10 @@ class CalendarService:
             print(f"❌ Failed to fetch event {event_id}: {e}")
             return None
         except Exception as e:
+            # Check for token errors
+            if isinstance(e, RefreshError) or self._is_token_error(e):
+                self._disable_calendar_for_user(user, f"Token invalid or revoked: {e}")
+                
             print(f"❌ Failed to fetch event {event_id}: {e}")
             return None
 
