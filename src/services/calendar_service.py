@@ -147,10 +147,10 @@ class CalendarService:
             if not user or not user.google_calendar_enabled:
                 return 0
             
-            # 1. Find pending tasks with due date but no calendar event (creation failed)
+            # 1. Find tasks with due date but no calendar event (creation failed)
+            # Removed status='pending' filter to catch completed tasks that were never synced
             unsynced_tasks = Task.query.filter(
                 Task.user_id == user_id,
-                Task.status == 'pending',
                 Task.due_date.isnot(None),
                 Task.calendar_event_id.is_(None),
                 Task.created_from_calendar == False
@@ -179,8 +179,31 @@ class CalendarService:
                     
                     if success:
                         synced_count += 1
+                        
+                        # If task is already completed, ensure calendar reflects that
+                        if task.status == 'completed':
+                            print(f"   Checking off completed task {task.id} in calendar...")
+                            self.mark_event_completed(task)
                 except Exception as e:
                     print(f"⚠️ Failed to retry sync for task {task.id}: {e}")
+            
+            # 3. Integrity Check: Ensure recently completed tasks are marked on calendar
+            # (Fixes retroactive cases where task was synced as pending but completion update failed)
+            # We check the last 20 completed tasks to ensure they are visually completed on the calendar
+            recent_completed = Task.query.filter(
+                Task.user_id == user_id,
+                Task.status == 'completed',
+                Task.calendar_event_id.isnot(None)
+            ).order_by(Task.updated_at.desc()).limit(30).all()
+            
+            if recent_completed:
+                print(f"🔄 Verifying completion status for {len(recent_completed)} recent tasks")
+                for task in recent_completed:
+                    try:
+                        # This is safe to call repeatedly (idempotent) - forces update to 'checked' state
+                        self.mark_event_completed(task)
+                    except Exception as e:
+                        print(f"⚠️ Failed to verify completion for task {task.id}: {e}")
             
             if synced_count > 0:
                 print(f"✅ Successfully recovered {synced_count} tasks for user {user_id}")
