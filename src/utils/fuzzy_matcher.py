@@ -68,7 +68,7 @@ class FuzzyTaskMatcher:
         matches = process.extract(
             search_term,
             choices,
-            scorer=fuzz.WRatio,
+            scorer=fuzz.partial_ratio,
             limit=top_n,
             score_cutoff=self.MIN_SIMILARITY_THRESHOLD
         )
@@ -215,7 +215,7 @@ class FuzzyTaskMatcher:
             >>> print(score)
             95.0
         """
-        return fuzz.WRatio(search_term, task_description)
+        return fuzz.partial_ratio(search_term, task_description)
     
     def is_good_match(self, score: float) -> bool:
         """

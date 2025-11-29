@@ -827,6 +827,14 @@ class TaskService:
             # LAYER 1: Fuzzy matching (fast, free, handles 95% of cases)
             match_result = self.fuzzy_matcher.find_single_best_match(description, tasks)
             
+            # Debug logging to see what fuzzy matcher returns
+            if not match_result:
+                print(f"   ⚠️ DEBUG: No match found above threshold (60%). Checking scores for first 5 tasks:")
+                from rapidfuzz import fuzz
+                for i, task in enumerate(tasks[:2], 1):  # Show first 2 tasks
+                    score = fuzz.partial_ratio(description, task.description)
+                    print(f"      {i}. '{task.description[:40]}...' - Score: {score:.1f}")
+            
             if match_result:
                 task, score = match_result
                 print(f"   ✅ Fuzzy match: '{task.description}' (score: {score:.1f})")
@@ -987,6 +995,14 @@ class TaskService:
             
             # LAYER 1: Fuzzy matching (fast, free, handles 95% of cases)
             match_result = self.fuzzy_matcher.find_single_best_match(description, tasks)
+            
+            # Debug logging to see what fuzzy matcher returns
+            if not match_result:
+                print(f"   ⚠️ DEBUG: No match found above threshold (60%). Checking scores for first 5 tasks:")
+                from rapidfuzz import fuzz
+                for i, task in enumerate(tasks[:2], 1):  # Show first 2 tasks
+                    score = fuzz.partial_ratio(description, task.description)
+                    print(f"      {i}. '{task.description[:40]}...' - Score: {score:.1f}")
             
             if match_result:
                 task, score = match_result
