@@ -831,7 +831,7 @@ class TaskService:
             if not match_result:
                 print(f"   ⚠️ DEBUG: No match found above threshold (60%). Checking scores for first 5 tasks:")
                 from rapidfuzz import fuzz
-                for i, task in enumerate(tasks[:20], 1):  # Show first 20 tasks
+                for i, task in enumerate(tasks[:5], 1):  # Show first 5 tasks
                     score = fuzz.partial_ratio(description, task.description)
                     print(f"      {i}. '{task.description[:40]}...' - Score: {score:.1f}")
             

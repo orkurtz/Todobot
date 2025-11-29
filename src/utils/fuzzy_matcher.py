@@ -56,28 +56,27 @@ class FuzzyTaskMatcher:
         if not tasks or not search_term:
             return []
         
-        # Extract descriptions and task objects
-        choices = [(task.description, task) for task in tasks]
+        # Extract just the descriptions as strings (standard rapidfuzz approach)
+        descriptions = [task.description for task in tasks]
         
         # Use rapidfuzz to find best matches
-        # token_set_ratio is ideal for:
-        # - Word order variations ("buy milk" vs "milk buy")
-        # - Partial matches ("buy" matches "buy milk")
-        # - Multiple languages (Hebrew/English)
-        # - Typo tolerance
+        # partial_ratio is ideal for:
+        # - Substring matches
+        # - Typo tolerance (single character differences)
+        # - Unicode/Hebrew text
         matches = process.extract(
             search_term,
-            choices,
+            descriptions,
             scorer=fuzz.partial_ratio,
             limit=top_n,
             score_cutoff=self.MIN_SIMILARITY_THRESHOLD
         )
         
         # Convert from rapidfuzz format to our format
-        # matches is list of: (matched_string, score, (description, task_object))
+        # matches is list of: (matched_string, score, index)
         results = []
-        for match in matches:
-            matched_desc, score, (_, task_obj) = match
+        for matched_desc, score, index in matches:
+            task_obj = tasks[index]  # Use index to get the corresponding task object
             results.append((task_obj, score))
         
         return results
