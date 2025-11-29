@@ -194,7 +194,7 @@ class CalendarService:
                 Task.user_id == user_id,
                 Task.status == 'completed',
                 Task.calendar_event_id.isnot(None)
-            ).order_by(Task.updated_at.desc()).limit(30).all()
+            ).order_by(Task.completed_at.desc()).limit(100).all()
             
             if recent_completed:
                 print(f"🔄 Verifying completion status for {len(recent_completed)} recent tasks")

@@ -63,7 +63,7 @@ class TaskService:
                 Task.status == status
             )
             if status == 'completed' and include_patterns_when_completed:
-                tasks = base_query.order_by(Task.updated_at.desc()).limit(limit).all()
+                tasks = base_query.order_by(Task.completed_at.desc()).limit(limit).all()
             else:
                 tasks = base_query.filter(Task.is_recurring == False).order_by(
                     Task.due_date.asc().nullslast(), Task.created_at.desc()

@@ -93,6 +93,22 @@ class CalendarSyncService:
             # Check for deleted events (tasks with calendar_event_id that no longer exist)
             deleted_count += self._handle_event_deletions(user, all_events)
             
+            # Verify bot-completed tasks are marked in calendar (Bot → Calendar)
+            recent_completed = Task.query.filter(
+                Task.user_id == user.id,
+                Task.status == 'completed',
+                Task.calendar_event_id.isnot(None)
+            ).order_by(Task.completed_at.desc()).limit(50).all()
+            
+            if recent_completed:
+                print(f"🔄 Verifying {len(recent_completed)} completed tasks in calendar")
+                for task in recent_completed:
+                    try:
+                        # Idempotent - safe to call repeatedly
+                        self.calendar_service.mark_event_completed(task)
+                    except Exception as e:
+                        print(f"⚠️ Failed to mark task {task.id} as completed: {e}")
+            
             # Update last sync timestamp
             user.last_calendar_sync = datetime.now(pytz.UTC)
             db.session.commit()
