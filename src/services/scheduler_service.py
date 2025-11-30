@@ -359,8 +359,24 @@ class SchedulerService:
                                 calendar_events = calendar_service.fetch_events(user, today_start, today_end, fetch_all=True)
                                 
                                 # Filter out events that are already tasks (deduplication)
-                                task_event_ids = {t.calendar_event_id for t in (tasks_due_today + overdue_tasks) if t.calendar_event_id}
-                                display_events = [e for e in calendar_events if e['id'] not in task_event_ids]
+                                # Query ALL tasks with calendar_event_id (including completed, templates, etc.)
+                                all_user_tasks_with_cal_id = Task.query.filter(
+                                    Task.user_id == user.id,
+                                    Task.calendar_event_id.isnot(None)
+                                ).all()
+                                task_event_ids = {t.calendar_event_id for t in all_user_tasks_with_cal_id}
+                                
+                                # Filter out:
+                                # 1. Events that are already bot tasks (deduplication)
+                                # 2. Cancelled events (status == 'cancelled')
+                                # 3. Completed events (colorId == '8' or has ✅ in title)
+                                display_events = [
+                                    e for e in calendar_events 
+                                    if e['id'] not in task_event_ids
+                                    and e.get('status') != 'cancelled'
+                                    and e.get('colorId') != '8'  # Gray = completed
+                                    and not e.get('title', '').startswith('✅')  # Completed marker in title
+                                ]
                                 
                                 if display_events:
                                     summary_parts.append(f"📆 אירועים ביומן ({len(display_events)}):")

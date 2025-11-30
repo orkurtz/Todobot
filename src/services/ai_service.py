@@ -623,7 +623,12 @@ Always include the transcription for transparency.
                 all_events = self.calendar_service.fetch_events(user, start_utc, end_utc, fetch_all=True)
                 
                 # CRITICAL: Filter out events that are already tasks (deduplication)
-                task_event_ids = {t.calendar_event_id for t in tasks if t.calendar_event_id}
+                # Query ALL tasks with calendar_event_id (including templates, completed, etc.) to prevent duplicates
+                all_user_tasks_with_cal_id = Task.query.filter(
+                    Task.user_id == user.id,
+                    Task.calendar_event_id.isnot(None)
+                ).all()
+                task_event_ids = {t.calendar_event_id for t in all_user_tasks_with_cal_id}
                 
                 # Filter out:
                 # 1. Events that are already bot tasks (deduplication)

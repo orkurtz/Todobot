@@ -153,7 +153,8 @@ class CalendarService:
                 Task.user_id == user_id,
                 Task.due_date.isnot(None),
                 Task.calendar_event_id.is_(None),
-                Task.created_from_calendar == False
+                Task.created_from_calendar == False,
+                Task.is_recurring == False  # Don't sync recurring templates!
             ).all()
             
             # 2. Find tasks with sync errors (update failed)
