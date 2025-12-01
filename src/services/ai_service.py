@@ -93,7 +93,9 @@ CORE INSTRUCTIONS:
 
 LOGIC RULES:
 - **Dates & Times:**
-  - Dates are DD/MM/YYYY format: "1/12" = December 1st, "12/1" = January 12th. Convert to YYYY-MM-DD.
+  - Dates are DD/MM/YYYY format: "1/12" = December 1st, "12/1" = January 12th.
+  - For explicit dates (e.g., "1/12", "25/12/2025"), convert to YYYY-MM-DD format.
+  - For relative dates (e.g., "tomorrow", "in 2 hours", "next week"), keep as natural language.
   - "Tomorrow" = Current Date + 1 day.
   - "Next week" = Start of the upcoming week.
   - "In X hours/minutes" = Calculate based on {current_date}.

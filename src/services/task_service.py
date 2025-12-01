@@ -378,6 +378,24 @@ class TaskService:
                     print(f"⚠️ Invalid date format in '{text}': {e}")
                     continue  # Try next pattern
         
+        # Handle ISO format (YYYY-MM-DD or YYYY-MM-DD HH:MM) - must come before parser.parse()
+        try:
+            # Check if it looks like ISO format (YYYY-MM-DD)
+            if '-' in text and re.match(r'\d{4}-\d{1,2}-\d{1,2}', text):
+                # Try with time first
+                if ' ' in text:
+                    target_date = datetime.strptime(text.strip(), "%Y-%m-%d %H:%M")
+                else:
+                    # Date only, default to 9:00
+                    target_date = datetime.strptime(text.strip(), "%Y-%m-%d")
+                    target_date = target_date.replace(hour=9, minute=0)
+                
+                target_date = tz.localize(target_date)
+                print(f"✅ Parsed ISO date: {text} → {target_date}")
+                return target_date.astimezone(pytz.UTC).replace(tzinfo=None)
+        except ValueError:
+            pass
+        
         # Try parsing explicit dates with dayfirst=True for other formats
         try:
             parsed_date = parser.parse(text, dayfirst=True, default=now)
