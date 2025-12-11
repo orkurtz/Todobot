@@ -654,15 +654,30 @@ class TaskService:
                 
                 elif action == 'update':
                     # Handle task update - support recurring pattern updates
-                    task_id_str = task_data.get('task_id') or task_data.get('description')
-                    if task_id_str and task_id_str.isdigit():
-                        target_task = Task.query.filter_by(id=int(task_id_str), user_id=user_id).first()
-                        if target_task and target_task.is_recurring:
-                            success, message = self.update_recurring_pattern(int(task_id_str), user_id, task_data)
+                    task_id_str = task_data.get('task_id')
+                    description_str = task_data.get('description')
+                    
+                    # Determine identifier: prioritize task_id, fallback to description
+                    identifier = task_id_str if task_id_str else description_str
+                    
+                    if identifier:
+                        # Check if it's a numeric ID pointing to a pattern
+                        if isinstance(identifier, str) and identifier.isdigit():
+                            target_task = Task.query.filter_by(id=int(identifier), user_id=user_id).first()
+                            if target_task and target_task.is_recurring:
+                                success, message = self.update_recurring_pattern(identifier, user_id, task_data)
+                            else:
+                                success, message = self._handle_task_update(user_id, task_data)
                         else:
-                            success, message = self._handle_task_update(user_id, task_data)
+                            # Try to find as recurring pattern first
+                            pattern = self._find_recurring_pattern_by_description(user_id, identifier)
+                            if pattern:
+                                success, message = self.update_recurring_pattern(identifier, user_id, task_data)
+                            else:
+                                success, message = self._handle_task_update(user_id, task_data)
                     else:
                         success, message = self._handle_task_update(user_id, task_data)
+                        
                     if success:
                         actions_performed['update'].append(message)
                     else:
@@ -684,27 +699,39 @@ class TaskService:
                         query_results.append(query_result)
                 
                 elif action == 'stop_series':
-                    task_id_str = task_data.get('task_id') or task_data.get('description')
-                    if task_id_str and task_id_str.isdigit():
-                        task_id = int(task_id_str)
+                    task_id_str = task_data.get('task_id')
+                    description_str = task_data.get('description')
+                    
+                    # Determine identifier: prioritize task_id, fallback to description
+                    identifier = task_id_str if task_id_str else description_str
+                    
+                    if identifier:
                         # Check if message contains delete indicators
                         delete_instances = ('מחק' in (original_message or '').lower() or 
                                           'delete' in (original_message or '').lower())
-                        success, message = self.stop_recurring_series(task_id, user_id, delete_instances)
+                        success, message = self.stop_recurring_series(identifier, user_id, delete_instances)
                         if success:
                             actions_performed['stop_series'].append(message)
                         else:
                             failed_tasks.append(message)
+                    else:
+                        failed_tasks.append("❌ לא צוין מזהה או תיאור לסדרה")
                 
                 elif action == 'complete_series':
-                    task_id_str = task_data.get('task_id') or task_data.get('description')
-                    if task_id_str and task_id_str.isdigit():
-                        task_id = int(task_id_str)
-                        success, message = self.complete_recurring_series(task_id, user_id)
+                    task_id_str = task_data.get('task_id')
+                    description_str = task_data.get('description')
+                    
+                    # Determine identifier: prioritize task_id, fallback to description
+                    identifier = task_id_str if task_id_str else description_str
+                    
+                    if identifier:
+                        success, message = self.complete_recurring_series(identifier, user_id)
                         if success:
                             actions_performed['complete_series'].append(message)
                         else:
                             failed_tasks.append(message)
+                    else:
+                        failed_tasks.append("❌ לא צוין מזהה או תיאור לסדרה")
                 
             except Exception as e:
                 print(f"❌ Failed to process task: {e}")
@@ -1821,13 +1848,83 @@ class TaskService:
         next_due_utc = next_due_israel.astimezone(pytz.UTC)
         return next_due_utc.replace(tzinfo=None)
     
-    def stop_recurring_series(self, pattern_task_id: int, user_id: int, delete_instances: bool = False) -> Tuple[bool, str]:
-        """Stop a recurring series (deletes future instances)"""
-        try:
-            pattern = Task.query.filter_by(id=pattern_task_id, user_id=user_id, is_recurring=True).first()
+    def _find_recurring_pattern_by_description(self, user_id: int, description: str) -> Optional[Task]:
+        """
+        Find a recurring pattern by description using fuzzy matching.
+        Follows the same pattern as _complete_task_by_description for consistency.
+        
+        Args:
+            user_id: User ID
+            description: Text to match against pattern descriptions
             
-            if not pattern:
-                return False, f"❌ לא נמצאה סדרה חוזרת #{pattern_task_id}"
+        Returns:
+            Task object (recurring pattern) if found with score >= 60%, None otherwise
+        """
+        try:
+            # Get all active recurring patterns for user (only templates, not instances)
+            patterns = Task.query.filter(
+                Task.user_id == user_id,
+                Task.is_recurring == True,
+                Task.status == 'pending'
+            ).all()
+            
+            if not patterns:
+                print(f"⚠️ No active recurring patterns found for user {user_id}")
+                return None
+            
+            print(f"🔍 Fuzzy matching pattern: '{description}' against {len(patterns)} recurring patterns")
+            
+            # Use fuzzy matcher to find best match
+            match_result = self.fuzzy_matcher.find_single_best_match(description, patterns)
+            
+            if match_result:
+                pattern, score = match_result
+                print(f"✅ Found pattern match: '{pattern.description}' (ID: {pattern.id}, score: {score:.1f})")
+                
+                # Apply same threshold as task completion/deletion (60%)
+                if score >= 60:
+                    return pattern
+                else:
+                    print(f"⚠️ Match score {score:.1f} below threshold (60%)")
+                    return None
+            else:
+                print(f"❌ No pattern match found above threshold")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error finding pattern by description: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def stop_recurring_series(self, pattern_identifier: Any, user_id: int, delete_instances: bool = False) -> Tuple[bool, str]:
+        """
+        Stop a recurring series (deletes future instances).
+        
+        Args:
+            pattern_identifier: Either pattern_id (int/str numeric) or description (str) for fuzzy matching
+            user_id: User ID
+            delete_instances: Whether to delete future pending instances
+        """
+        try:
+            # Try to find pattern by ID or description
+            pattern = None
+            pattern_task_id = None
+            
+            if isinstance(pattern_identifier, int) or (isinstance(pattern_identifier, str) and pattern_identifier.isdigit()):
+                # Find by ID
+                pattern_task_id = int(pattern_identifier)
+                pattern = Task.query.filter_by(id=pattern_task_id, user_id=user_id, is_recurring=True).first()
+                if pattern:
+                    print(f"✅ Found recurring pattern by ID: {pattern_task_id}")
+            else:
+                # Find by fuzzy matching description
+                pattern = self._find_recurring_pattern_by_description(user_id, str(pattern_identifier))
+                if pattern:
+                    pattern_task_id = pattern.id
+            
+            if not pattern or pattern_task_id is None:
+                return False, f"❌ לא נמצאה סדרה חוזרת"
             
             # Mark pattern as cancelled
             pattern.status = 'cancelled'
@@ -1879,13 +1976,30 @@ class TaskService:
             db.session.rollback()
             return False, "❌ שגיאה בעצירת הסדרה"
     
-    def complete_recurring_series(self, pattern_task_id: int, user_id: int) -> Tuple[bool, str]:
-        """Complete a recurring series (keeps all instances)"""
+    def complete_recurring_series(self, pattern_identifier: Any, user_id: int) -> Tuple[bool, str]:
+        """
+        Complete a recurring series (keeps all instances).
+        
+        Args:
+            pattern_identifier: Either pattern_id (int/str numeric) or description (str) for fuzzy matching
+            user_id: User ID
+        """
         try:
-            pattern = Task.query.filter_by(id=pattern_task_id, user_id=user_id, is_recurring=True).first()
+            # Try to find pattern by ID or description
+            pattern = None
+            
+            if isinstance(pattern_identifier, int) or (isinstance(pattern_identifier, str) and pattern_identifier.isdigit()):
+                # Find by ID
+                pattern_task_id = int(pattern_identifier)
+                pattern = Task.query.filter_by(id=pattern_task_id, user_id=user_id, is_recurring=True).first()
+                if pattern:
+                    print(f"✅ Found recurring pattern by ID: {pattern_task_id}")
+            else:
+                # Find by fuzzy matching description
+                pattern = self._find_recurring_pattern_by_description(user_id, str(pattern_identifier))
             
             if not pattern:
-                return False, f"❌ לא נמצאה סדרה חוזרת #{pattern_task_id}"
+                return False, f"❌ לא נמצאה סדרה חוזרת"
             
             # Mark pattern as completed
             pattern.status = 'completed'
@@ -1958,12 +2072,34 @@ class TaskService:
         
         return "חוזר"
 
-    def update_recurring_pattern(self, pattern_id: int, user_id: int, task_data: Dict) -> Tuple[bool, str]:
-        """Update a recurring pattern and propagate changes to future pending instances."""
+    def update_recurring_pattern(self, pattern_identifier: Any, user_id: int, task_data: Dict) -> Tuple[bool, str]:
+        """
+        Update a recurring pattern and propagate changes to future pending instances.
+        
+        Args:
+            pattern_identifier: Either pattern_id (int/str numeric) or description (str) for fuzzy matching
+            user_id: User ID
+            task_data: Dict with update fields (new_description, due_date, recurrence_pattern, etc.)
+        """
         try:
-            pattern = Task.query.filter_by(id=pattern_id, user_id=user_id, is_recurring=True).first()
+            # Try to find pattern by ID or description
+            pattern = None
+            
+            if isinstance(pattern_identifier, int) or (isinstance(pattern_identifier, str) and pattern_identifier.isdigit()):
+                # Find by ID
+                pattern_id = int(pattern_identifier)
+                pattern = Task.query.filter_by(id=pattern_id, user_id=user_id, is_recurring=True).first()
+                if pattern:
+                    print(f"✅ Found recurring pattern by ID: {pattern_id}")
+            else:
+                # Find by fuzzy matching description
+                pattern = self._find_recurring_pattern_by_description(user_id, str(pattern_identifier))
+            
             if not pattern:
-                return False, f"❌ לא נמצאה סדרה חוזרת #{pattern_id}"
+                return False, f"❌ לא נמצאה סדרה חוזרת"
+            
+            # Use the found pattern's ID for the rest of the logic
+            pattern_id = pattern.id
 
             old_description = pattern.description
             old_due = pattern.due_date

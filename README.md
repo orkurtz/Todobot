@@ -41,8 +41,15 @@ This project was originally created by **[buzaglo idan](https://github.com/buzag
 This repository represents a **complete refactor and significant enhancement** of the original project. While maintaining the core vision, we've added extensive features and improvements:
 
 #### 🆕 Major New Features
-- **📅 Google Calendar Integration**: Full one-way sync from Bot to Google Calendar - tasks with due dates automatically create calendar events, updates sync in real-time, and completions mark events as done. Perfect for seeing your schedule in one place!
-- **🔄 Complete Recurring Tasks System**: Full support for daily, weekly, interval, and custom recurring patterns with automatic instance generation and calendar sync
+- **📅 Google Calendar Integration**: 
+  - **Phase 1**: Full one-way sync from Bot to Google Calendar - tasks with due dates automatically create calendar events, updates sync in real-time, and completions mark events as done
+  - **Phase 2 (NEW!)**: Two-way sync - calendar events auto-convert to tasks every 10 minutes
+  - Smart filtering (color-based + hashtag '#' detection)
+  - Automatic reconnection recovery with integrity checks for offline tasks
+  - "הצג יומן" command shows unified view of tasks and events
+  - Configurable sync settings via WhatsApp commands
+  - Perfect for seeing your schedule in one place!
+- **🔄 Complete Recurring Tasks System**: Full support for daily, weekly, monthly, interval, and specific-days recurring patterns with automatic instance generation and calendar sync
 - **🎤 Voice Message Support**: Complete voice transcription and task extraction using Gemini 2.5 Flash multimodal API
 - **👍 Emoji Reaction Completion**: Intuitive task completion via WhatsApp emoji reactions
 - **📝 Task Rescheduling & Updates**: Full support for updating task descriptions and rescheduling due dates with natural language:
@@ -160,6 +167,11 @@ Create tasks that automatically repeat on a schedule:
 4. **Interval Tasks**
    - `"כל יומיים להשקות צמחים"` → Every 2 days
    - `"every 3 days water plants"` → Custom intervals
+
+5. **Monthly Tasks**
+   - `"כל ה-15 בחודש להעביר שכירות"` → 15th of every month
+   - `"every 1st of the month pay bills"` → Monthly on the 1st
+   - `"every month on the 20th backup files"` → 20th of each month
 
 #### Recurring Task Management
 
@@ -297,11 +309,16 @@ Seamlessly sync your tasks to Google Calendar for a unified view of your schedul
 - **Smart Completion**: Completing tasks marks calendar events as done
 
 **Calendar → Bot (Phase 2):**
-- **Two-Way Sync**: Changes in calendar sync back to bot (every 10 minutes)
-- **Smart Filtering**: Only events with specific color or '#' become tasks
-- **Unified View**: "הצג יומן" shows both tasks and calendar events
-- **No Duplication**: Events already linked to tasks don't show twice
-- **Last Write Wins**: Latest change (bot or calendar) always wins
+- **Automatic Two-Way Sync**: Calendar changes sync to bot every 10 minutes
+- **Smart Event Filtering**: Only events matching your criteria become tasks:
+  - Events with configured color ID (e.g., color 9 = Blueberry/Blue)
+  - Events with '#' in title (if hashtag detection enabled)
+  - Regular events display separately without creating duplicate tasks
+- **Event-to-Task Conversion**: Calendar events automatically become bot tasks
+- **Unified Schedule View**: "הצג יומן" shows both tasks and calendar events in one place
+- **Intelligent Deduplication**: Events already linked to tasks don't show twice
+- **Conflict Resolution**: Last write wins - latest change (bot or calendar) always takes precedence
+- **Background Worker**: Syncs calendar changes every 10 minutes automatically
 
 **Security & Performance:**
 - **Secure Storage**: Google tokens encrypted at rest (AES-256)
@@ -341,6 +358,15 @@ Bot:
 📅 אירועים ביומן (2):
 🕐 10:00-11:00 פגישה עם לקוח
 🕒 14:00-15:00 ישיבת צוות"
+
+[Two-Way Sync Example - Phase 2:]
+[In Google Calendar: Create event "Buy groceries" with color 9 (Blue)]
+[10 minutes later]
+Bot: "✅ נוצרה משימה: Buy groceries (מהיומן 📅)"
+
+[You complete task in bot]
+Bot: "✅ הושלמה משימה"
+[Calendar event marked with ✅ immediately!]
 ```
 
 #### Calendar Settings (Phase 2)
@@ -378,12 +404,14 @@ You: "כבה #"  or  "הפעל #"
 Bot: Toggles automatic detection of '#' in event titles
 ```
 
-**How It Works:**
-1. Create event in Google Calendar with selected color OR '#' in title
-2. Within 10 minutes, bot automatically creates a task
-3. Changes in bot update calendar immediately
-4. Changes in calendar update bot within 10 minutes
-5. Last change always wins (no conflicts!)
+**How Calendar Sync Works:**
+1. **Calendar → Bot (Phase 2)**: Create event in Google Calendar with selected color OR '#' in title → Bot automatically creates task within 10 minutes
+2. **Bot → Calendar (Phase 1)**: Create task with due date in bot → Calendar event created immediately
+3. **Two-Way Updates**: 
+   - Changes in bot update calendar instantly
+   - Changes in calendar update bot within 10 minutes (next sync)
+4. **Conflict Resolution**: Last change always wins (no merge conflicts!)
+5. **Reconnection Recovery**: If disconnected, all offline tasks sync automatically on reconnect
 ```
 
 #### Calendar Commands
@@ -394,9 +422,9 @@ Bot: Toggles automatic detection of '#' in event titles
 | **Disconnect Calendar** | `נתק יומן` | `disconnect calendar` | Disconnect calendar integration |
 | **Calendar Status** | `סטטוס יומן` | `calendar status` | Check connection status |
 | **Show Schedule** | `הצג יומן` | `show calendar` | Display today's tasks + calendar events |
-| **Calendar Settings** | `הגדרות יומן` | `calendar settings` | Configure color & hashtag sync |
-| **Set Event Color** | `קבע צבע [1-11]` | `set color [1-11]` | Set which color events become tasks |
-| **Toggle Hashtag** | `הפעל #` / `כבה #` | `enable #` / `disable #` | Toggle '#' detection in event titles |
+| **Calendar Settings** | `הגדרות יומן` | `calendar settings` | View current sync settings (color, hashtag detection) |
+| **Set Event Color** | `קבע צבע [1-11]` | `set color [1-11]` | Configure which calendar color creates tasks automatically |
+| **Toggle Hashtag** | `הפעל #` / `כבה #` | `enable #` / `disable #` | Enable/disable '#' detection in event titles |
 
 #### Technical Details
 
@@ -406,20 +434,29 @@ Bot: Toggles automatic detection of '#' in event titles
 - **Immediate Sync**: Task changes update calendar instantly
 - **Recurring Instances**: Each recurring task instance gets its own calendar event
 
-**Phase 2 (Calendar → Bot):**
-- **Background Worker**: Syncs calendar changes every 10 minutes
-- **Smart Filtering**: Only events with configured color or '#' become tasks
-- **Conflict Resolution**: Last write wins (no merge conflicts)
-- **Deduplication**: Events already linked to tasks don't show twice
-- **On-Demand Fetching**: Calendar events fetched when needed (not stored)
+**Phase 2 (Calendar → Bot - NEW!):**
+- **Background Worker**: Syncs calendar changes every 10 minutes automatically
+- **Smart Filtering**: User-configurable criteria for event-to-task conversion:
+  - Color-based: Events with specific color ID (e.g., color 9 = Blue)
+  - Hashtag-based: Events with '#' in title (enabled by default)
+  - Configure via: `"הגדרות יומן"`, `"קבע צבע [1-11]"`, `"הפעל #"` / `"כבה #"`
+- **Conflict Resolution**: Last write wins algorithm (no merge conflicts)
+- **Intelligent Deduplication**: Events already linked to tasks don't show twice in "הצג יומן"
+- **On-Demand Fetching**: Calendar events fetched when needed (not stored in database for privacy)
+- **Sync Window**: Looks back 7 days on first sync, then syncs incrementally with 1-hour overlap for safety
 
-**Resilience & Recovery (New!):**
-- **Automatic Token Recovery**: If Google credentials expire or are revoked, the system gracefully handles it, notifies the user, and prompts for reconnection without crashing.
-- **2-Way Sync Recovery**: When a user reconnects their calendar after a disconnection, the bot automatically:
-  - Identifies and syncs all tasks created while offline.
-  - Updates any tasks that were completed while offline.
-  - Performs an integrity check on recent completed tasks to ensure they are visually marked as done on the calendar.
-- **Self-Healing**: System automatically detects and fixes inconsistencies between bot tasks and calendar events during reconnection.
+**Resilience & Recovery (NEW!):**
+- **Automatic Token Recovery**: If Google credentials expire or are revoked, the system gracefully handles it, notifies the user, and prompts for reconnection without crashing
+- **Auto-Disconnect Protection**: Invalid or revoked tokens trigger automatic disconnect with immediate WhatsApp notification to user
+- **Comprehensive Sync Recovery**: When reconnecting calendar after a disconnection, the bot automatically:
+  - Scans and syncs all tasks created while offline (looks back up to 7 days)
+  - Syncs tasks that were completed while disconnected
+  - Performs integrity check on last 30 completed tasks to ensure they're visually marked as done (✅) in calendar
+  - Creates missing calendar events for all tasks with due dates
+  - Fixes any calendar_sync_error flags from failed operations
+- **Self-Healing System**: Automatically detects and fixes inconsistencies between bot tasks and calendar events during reconnection
+- **Non-Fatal Error Handling**: Calendar sync failures don't break core task functionality - tasks work even if calendar is temporarily unavailable
+- **Proactive Token Refresh**: Automatically refreshes access tokens 5 minutes before expiry to prevent disruptions
 
 **General:**
 - **Timezone Handling**: All events use Israel timezone (Asia/Jerusalem)
@@ -494,6 +531,8 @@ Bot: Toggles automatic detection of '#' in event titles
 │  • Create/update/delete events       │  │  • User data secured (AES-256)        │
 │  • Mark events as completed          │  │  • Calendar tokens encrypted          │
 │  • Automatic token refresh           │  │  • Recurring patterns & instances    │
+│  • TWO-WAY SYNC (every 10 min)       │  │  • Last sync timestamps              │
+│  • Auto-reconnection recovery        │  │  • Calendar sync tracking            │
 └──────────────────────────────────┘  └─────────────────────────────────────────┘
                      │
                      v
@@ -503,6 +542,7 @@ Bot: Toggles automatic detection of '#' in event titles
 │  • Sends daily reminders (11 AM, 3 PM, 7 PM)            │
 │  • Daily summary (9 AM)                                  │
 │  • Generates recurring instances (midnight)              │
+│  • Syncs calendar changes (every 10 minutes)             │
 └────────────────────┬──────────────────────────────────┘
                      │
                      v
@@ -683,6 +723,7 @@ To enable calendar integration:
 | **Connect Calendar** | `חבר יומן` | `connect calendar` | Connect Google Calendar |
 | **Disconnect Calendar** | `נתק יומן` | `disconnect calendar` | Disconnect calendar |
 | **Calendar Status** | `סטטוס יומן` | `calendar status` | Check calendar connection |
+| **Show Calendar** | `הצג יומן` / `יומן` | `show calendar` | View tasks AND calendar events for today |
 
 ### Creating Tasks
 
@@ -733,6 +774,13 @@ To enable calendar integration:
 ```
 "כל יומיים להשקות צמחים"
 "every 3 days water plants"
+```
+
+#### Monthly Recurring
+```
+"כל ה-15 בחודש להעביר שכירות"
+"every 1st of the month pay bills"
+"every month on the 20th backup files"
 ```
 
 ### Managing Tasks
@@ -957,6 +1005,22 @@ Access at `/admin/dashboard`:
    - Verify user has connected calendar: send `"סטטוס יומן"`
    - Check Railway logs for calendar sync errors
    - Reconnect calendar if tokens expired: send `"חבר יומן"` again
+
+5. **Calendar sync stopped working / Token expired**
+   - Check connection status: send `"סטטוס יומן"`
+   - If disconnected, the bot auto-notifies you via WhatsApp
+   - Reconnect: send `"חבר יומן"` and authorize again
+   - Bot automatically syncs all missed tasks on reconnection (up to 7 days back)
+   - Check worker logs for sync errors or "Auto-disconnect" messages
+   - Verify Google Calendar API quota not exceeded (1M requests/day limit)
+
+6. **Calendar events not converting to tasks (Phase 2)**
+   - Verify sync settings: send `"הגדרות יומן"` to check current configuration
+   - Ensure event has configured color OR contains '#' in title
+   - Wait up to 10 minutes for next automatic sync cycle
+   - Check that calendar is connected: send `"סטטוס יומן"`
+   - Verify worker process is running (handles background sync)
+   - Check Railway logs for "📅 Starting calendar sync" messages every 10 minutes
 
 ---
 

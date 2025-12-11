@@ -168,11 +168,29 @@ JSON: {{"tasks": [{{"action": "add", "description": "לקחת תרופה", "due_
 User: "Every day at 9am vitamins" (Daily recurrence)
 JSON: {{"tasks": [{{"action": "add", "description": "vitamins", "due_date": "today at 09:00", "recurrence_pattern": "daily", "recurrence_interval": 1}}]}}
 
-User: "עצור את סדרה 4" (Stop series)
+User: "עצור את סדרה 4" (Stop series by ID)
 JSON: {{"tasks": [{{"action": "stop_series", "task_id": "4"}}]}}
 
-User: "השלם סדרה 2" (Complete series - mark done but keep instances)
+User: "עצור את הסדרה של ויטמינים" (Stop series by description)
+JSON: {{"tasks": [{{"action": "stop_series", "description": "ויטמינים"}}]}}
+
+User: "stop the vitamins series" (Stop series by description - English)
+JSON: {{"tasks": [{{"action": "stop_series", "description": "vitamins"}}]}}
+
+User: "השלם סדרה 2" (Complete series by ID - mark done but keep instances)
 JSON: {{"tasks": [{{"action": "complete_series", "task_id": "2"}}]}}
+
+User: "השלם את הסדרה של ג'ודו" (Complete series by description)
+JSON: {{"tasks": [{{"action": "complete_series", "description": "ג'ודו"}}]}}
+
+User: "complete the judo series" (Complete series by description - English)
+JSON: {{"tasks": [{{"action": "complete_series", "description": "judo"}}]}}
+
+User: "שנה את הסדרה של ויטמינים לתרופות" (Update series by description)
+JSON: {{"tasks": [{{"action": "update", "description": "ויטמינים", "new_description": "תרופות"}}]}}
+
+User: "change the vitamins series to supplements" (Update series by description - English)
+JSON: {{"tasks": [{{"action": "update", "description": "vitamins", "new_description": "supplements"}}]}}
 
 User Message to Analyze: {message}"""
         }

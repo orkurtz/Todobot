@@ -190,12 +190,12 @@ class CalendarService:
             
             # 3. Integrity Check: Ensure recently completed tasks are marked on calendar
             # (Fixes retroactive cases where task was synced as pending but completion update failed)
-            # We check the last 20 completed tasks to ensure they are visually completed on the calendar
+            # We check the last 30 completed tasks to ensure they are visually completed on the calendar
             recent_completed = Task.query.filter(
                 Task.user_id == user_id,
                 Task.status == 'completed',
                 Task.calendar_event_id.isnot(None)
-            ).order_by(Task.completed_at.desc()).limit(100).all()
+            ).order_by(Task.completed_at.desc()).limit(30).all()
             
             if recent_completed:
                 print(f"🔄 Verifying completion status for {len(recent_completed)} recent tasks")

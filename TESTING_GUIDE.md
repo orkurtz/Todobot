@@ -19,12 +19,6 @@
 9. [User Commands Testing](#9-user-commands-testing)
 10. [User Experience Flows](#10-user-experience-flows)
 11. [Error Handling & Edge Cases](#11-error-handling--edge-cases)
-12. [Performance & Scale Testing](#12-performance--scale-testing)
-13. [Security Testing](#13-security-testing)
-14. [Integration Testing](#14-integration-testing)
-15. [Scheduler Testing](#15-scheduler-testing)
-16. [Testing Methodology](#16-testing-methodology)
-17. [Appendix](#17-appendix)
 
 ---
 
