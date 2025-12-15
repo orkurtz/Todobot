@@ -2,7 +2,7 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "python worker_simple.py"
+startCommand = "gunicorn server:app --workers 1 --threads 4 --bind 0.0.0.0:$PORT"
 restartPolicyType = "always"
 
 [environments.production.variables]

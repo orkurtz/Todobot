@@ -1,2 +1,1 @@
-web: gunicorn --config gunicorn.conf.py app:app
-worker: python worker_simple.py
+web: gunicorn server:app --workers 1 --threads 4 --bind 0.0.0.0:$PORT

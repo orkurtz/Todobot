@@ -1,8 +1,9 @@
 import os
 
 bind = f"0.0.0.0:{os.getenv('PORT', '5000')}"
-workers = int(os.getenv('GUNICORN_WORKERS', '2'))
-threads = int(os.getenv('GUNICORN_THREADS', '2'))
+# Default to 1 worker / 4 threads for 512MB plans; allow overrides via env.
+workers = int(os.getenv('WORKERS', os.getenv('GUNICORN_WORKERS', '1')))
+threads = int(os.getenv('THREADS', os.getenv('GUNICORN_THREADS', '4')))
 timeout = int(os.getenv('GUNICORN_TIMEOUT', '120'))
 keepalive = int(os.getenv('GUNICORN_KEEPALIVE', '5'))
 max_requests = int(os.getenv('GUNICORN_MAX_REQUESTS', '1000'))

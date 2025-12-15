@@ -50,7 +50,8 @@ class SchedulerService:
 
             # Configure executors
             executors = {
-                'default': ThreadPoolExecutor(20)
+                # Keep thread count low to fit 512MB plan
+                'default': ThreadPoolExecutor(4)
             }
 
             # Job defaults
