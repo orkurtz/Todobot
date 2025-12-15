@@ -94,11 +94,16 @@ class CalendarSyncService:
             deleted_count += self._handle_event_deletions(user, all_events)
             
             # Verify bot-completed tasks are marked in calendar (Bot → Calendar)
+            # Only look at the most recent completions within a recent time window
+            # to avoid repeatedly touching very old tasks and reduce API calls.
+            recent_cutoff = datetime.utcnow() - timedelta(minutes=60)
             recent_completed = Task.query.filter(
                 Task.user_id == user.id,
                 Task.status == 'completed',
-                Task.calendar_event_id.isnot(None)
-            ).order_by(Task.completed_at.desc()).limit(50).all()
+                Task.calendar_event_id.isnot(None),
+                Task.completed_at.isnot(None),
+                Task.completed_at >= recent_cutoff
+            ).order_by(Task.completed_at.desc()).limit(10).all()
             
             if recent_completed:
                 print(f"🔄 Verifying {len(recent_completed)} completed tasks in calendar")

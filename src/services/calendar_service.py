@@ -582,6 +582,13 @@ class CalendarService:
                 calendarId=user.google_calendar_id or 'primary',
                 eventId=task.calendar_event_id
             ).execute()
+
+            # If already marked as completed, skip update to reduce API calls
+            summary = event.get('summary', '')
+            color_id = event.get('colorId')
+            if summary.startswith('✅ ') and color_id == '8':
+                print(f"ℹ️ Event {task.calendar_event_id} already marked completed, skipping update")
+                return True, None
             
             # Mark as completed (add prefix or change color)
             event['summary'] = f"✅ {task.description}"
