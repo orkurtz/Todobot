@@ -515,6 +515,55 @@ class TaskService:
             db.session.rollback()
             return False, f"❌ שגיאה בעדכון המשימה. נסה שוב."
     
+    def delay_all_overdue_to_next_hour(self, user_id: int) -> str:
+        """
+        Move all overdue pending tasks (non-recurring patterns) to the next full hour in Israel.
+        Recurring instances (is_recurring=False, parent_recurring_id set) are included; patterns are excluded.
+        """
+        now_utc = datetime.utcnow()
+        now_israel = datetime.now(self.israel_tz)
+        start_of_hour = now_israel.replace(minute=0, second=0, microsecond=0)
+        target_israel = start_of_hour + timedelta(hours=1)
+        new_due_utc = target_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        overdue = Task.query.filter(
+            Task.user_id == user_id,
+            Task.status == 'pending',
+            Task.is_recurring == False,
+            Task.due_date.isnot(None),
+            Task.due_date < now_utc,
+        ).order_by(Task.due_date.asc()).all()
+        
+        if not overdue:
+            return "📋 אין משימות שעבר זמנן."
+        
+        ok = 0
+        failed: List[Tuple[int, str]] = []
+        for task in overdue:
+            success, msg = self.update_task(task.id, user_id, None, new_due_utc)
+            if success:
+                ok += 1
+            else:
+                failed.append((task.id, msg))
+        
+        local_line = new_due_utc.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz).strftime(
+            '%d/%m/%Y בשעה %H:%M'
+        )
+        if failed and ok == 0:
+            detail = "\n".join(f"• #{tid}: {err}" for tid, err in failed[:5])
+            if len(failed) > 5:
+                detail += f"\n… ועוד {len(failed) - 5}"
+            return f"❌ לא עודכנה אף משימה.\n{detail}"
+        if failed:
+            detail = "\n".join(f"• #{tid}" for tid, _ in failed[:5])
+            if len(failed) > 5:
+                detail += f"\n… ועוד {len(failed) - 5}"
+            return (
+                f"✅ עודכנו {ok} משימות. תאריך יעד חדש: {local_line}\n"
+                f"⚠️ נכשלו {len(failed)}: \n{detail}"
+            )
+        return f"✅ עודכנו {ok} משימות שעבר זמנן. תאריך יעד חדש לכולן: {local_line}"
+    
     def format_task_list(self, tasks: List[Task], show_due_date: bool = True) -> str:
         """Format task list for display"""
         if not tasks:

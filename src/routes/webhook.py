@@ -169,6 +169,8 @@ def process_incoming_message(message, value):
 🎯 בואו נתחיל! שלח לי משהו שאתה צריך לעשות, למשל:
 "להתקשר לאמא מחר ב-15:00"
 
+⏰ הרבה משימות שעבר זמן? שלח: דחה משימות שעברו (מעביר הכול לשעה הבאה)
+
 💡 כתוב 'עזרה' לכל הפקודות והדוגמאות"""
             
             whatsapp_service.send_message(from_number, welcome_msg)
@@ -541,6 +543,11 @@ def handle_basic_commands(user_id, text):
 • לפי Task ID: "עדכן משימה #123 ל..."
 • אפשר גם להקליט: "עדכן משימה 2 ל..."
 
+⏰ **דחיית כל המשימות שעבר זמנן (בבת אחת):**
+מעביר את כל המשימות עם תאריך יעד שעבר (כולל מופעים של משימות חוזרות, לא את תבנית הסדרה) לשעה הבאה המלאה בישראל.
+• `דחה משימות שעברו` / `הזז משימות שעברו להיום`
+• `delay_all_expired_tasks_to_today` / `delay expired tasks` / `/delay_expired`
+
 📅 **תאריכי יעד:**
 תאריכים יחסיים:
 • "מחר ב-15:00"
@@ -577,6 +584,7 @@ def handle_basic_commands(user_id, text):
 • פירוט - משימות בנפרד (לתגובות 👍)
 • סטטיסטיקה - נתוני ביצועים
 • הושלמו - משימות שהושלמו
+• דחה משימות שעברו — דחיית כל המשימות שעבר זמנן (שעה הבאה בישראל; פירוט בסעיף ⏰ למעלה)
 
 💬 תומך בעברית, אנגלית ועוד"""
     
@@ -599,6 +607,16 @@ def handle_basic_commands(user_id, text):
     
     elif text_lower in ['recurring', 'recurring tasks', 'משימות קבועות', 'משימות חוזרות', 'סדרות']:
         return handle_recurring_patterns_command(user_id)
+    
+    elif text_lower in (
+        'delay_all_expired_tasks_to_today',
+        '/delay_expired',
+        'delay expired tasks',
+        'דחה משימות שעברו',
+        'הזז משימות שעברו להיום',
+    ):
+        from ..app import task_service
+        return task_service.delay_all_overdue_to_next_hour(user_id)
     
     # Calendar integration commands
     elif any(cmd in text_lower for cmd in ['חבר יומן', 'חיבור יומן', 'connect calendar', 'link calendar']):

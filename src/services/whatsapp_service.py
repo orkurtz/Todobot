@@ -140,7 +140,11 @@ class WhatsAppService:
             
             "🎯 היי! מוכן להתארגן?\n\nאני אעזור לך:\n📝 להפוך הודעות למשימות ברורות\n⏰ לא לפספס דדליינים\n📊 לעקוב אחר הפרודוקטיביות\n💬 לענות על שאלותיך\n\nמה תרצה להשיג היום?"
         ]
-        return random.choice(messages)
+        footer = (
+            "\n\n⏰ משימות שעבר זמן? שלח: דחה משימות שעברו (או delay_all_expired_tasks_to_today)\n"
+            "💡 לתפריט מלא: עזרה"
+        )
+        return random.choice(messages) + footer
     
     def _make_api_call_with_retry(self, payload: Dict, max_retries: int = 3) -> Dict:
         """Make WhatsApp API call with exponential backoff retry"""

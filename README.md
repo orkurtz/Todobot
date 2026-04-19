@@ -719,6 +719,7 @@ To enable calendar integration:
 | **Separate Tasks** | `פירוט` | `tasks separate` | Get each task as separate message (for 👍 reactions) |
 | **Statistics** | `סטטיסטיקה` | `stats` | View productivity stats |
 | **Completed** | `הושלמו` | `completed` | View completed tasks |
+| **Delay overdue** | `דחה משימות שעברו` / `הזז משימות שעברו להיום` | `delay_all_expired_tasks_to_today` / `delay expired tasks` / `/delay_expired` | Move **all** overdue pending tasks (including recurring instances, not patterns) to the **next full hour** (Israel time). Only tasks with a due date are included |
 | **Recurring** | `משימות חוזרות` | `recurring tasks` | View active recurring patterns |
 | **Connect Calendar** | `חבר יומן` | `connect calendar` | Connect Google Calendar |
 | **Disconnect Calendar** | `נתק יומן` | `disconnect calendar` | Disconnect calendar |
@@ -799,6 +800,17 @@ To enable calendar integration:
 "דחה ל-31/10 את משימה 12"  ← Flexible word order!
 "postpone task 2 to tomorrow"
 "move task 1 in 2 hours"
+```
+
+#### Bulk: delay all overdue tasks
+Sets every **overdue** pending task’s due time to the **next full hour** in Israel (UTC in DB). Applies to normal tasks and **recurring instances**; does not change recurring **patterns**. Tasks **without** a due date are skipped.
+
+```
+דחה משימות שעברו
+הזז משימות שעברו להיום
+delay_all_expired_tasks_to_today
+delay expired tasks
+/delay_expired
 ```
 
 #### Complete
