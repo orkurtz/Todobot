@@ -3,10 +3,11 @@ WhatsApp webhook routes for handling incoming messages
 """
 import json
 import base64
+import threading
 import requests
 import pytz
 import unicodedata
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime
 
 from ..models.database import db, User, Message, Task
@@ -112,38 +113,49 @@ def verify():
         print(f"❌ Webhook verification error: {e}")
         return "Verification error", 500
 
+def _process_webhook_payload(app, data):
+    """Run AI/DB work outside the HTTP request so WhatsApp gets 200 OK immediately."""
+    with app.app_context():
+        try:
+            for entry in data['entry']:
+                if 'changes' not in entry:
+                    continue
+
+                for change in entry['changes']:
+                    if change.get('field') != 'messages':
+                        continue
+
+                    value = change.get('value', {})
+
+                    if 'messages' in value:
+                        for message in value['messages']:
+                            process_incoming_message(message, value)
+
+                    if 'statuses' in value:
+                        for status in value['statuses']:
+                            process_message_status(status)
+        except Exception as e:
+            print(f"❌ Background webhook processing error: {e}")
+
+
 @bp.route('/webhook', methods=['POST'])
 def webhook():
-    """Handle incoming WhatsApp messages"""
+    """Handle incoming WhatsApp messages — ack fast; heavy work runs in a background thread."""
     try:
-        data = request.json
-        
+        data = request.get_json(silent=True) or {}
+
         if not data or 'entry' not in data:
             return jsonify({"status": "ok"}), 200
-        
-        # Process each entry
-        for entry in data['entry']:
-            if 'changes' not in entry:
-                continue
-                
-            for change in entry['changes']:
-                if change.get('field') != 'messages':
-                    continue
-                
-                value = change.get('value', {})
-                
-                # Handle incoming messages
-                if 'messages' in value:
-                    for message in value['messages']:
-                        process_incoming_message(message, value)
-                
-                # Handle message status updates
-                if 'statuses' in value:
-                    for status in value['statuses']:
-                        process_message_status(status)
-        
+
+        app = current_app._get_current_object()
+        threading.Thread(
+            target=_process_webhook_payload,
+            args=(app, data),
+            daemon=True,
+        ).start()
+
         return jsonify({"status": "ok"}), 200
-        
+
     except Exception as e:
         print(f"❌ Webhook error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
