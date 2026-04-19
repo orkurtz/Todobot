@@ -5,6 +5,7 @@ import json
 import base64
 import requests
 import pytz
+import unicodedata
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 
@@ -14,6 +15,20 @@ from ..utils.validation import InputValidator
 
 bp = Blueprint('webhook', __name__)
 # task_service will be imported from app.py when needed
+
+def _normalize_command_text(text):
+    """
+    Strip invisible bidi/zero-width chars and trailing punctuation so
+    'עזרה', 'עזרה!', 'עזרה\u200f' etc. match the same as 'תפריט'.
+    """
+    if not text or not isinstance(text, str):
+        return ''
+    s = unicodedata.normalize('NFC', text.strip())
+    for ch in ('\u200f', '\u200e', '\ufeff', '\u202a', '\u202b', '\u202c', '\u202d'):
+        s = s.replace(ch, '')
+    s = s.strip().rstrip('!.?…,:;').strip()
+    return s.lower()
+
 
 def get_or_create_user(phone_number):
     """Get existing user or create new one"""
@@ -512,7 +527,7 @@ def process_message_status(status):
 
 def handle_basic_commands(user_id, text):
     """Handle basic bot commands"""
-    text_lower = text.lower().strip()
+    text_lower = _normalize_command_text(text)
     
     # Help command
     if text_lower in ['help', '/help', 'תפריט', 'עזרה']:
@@ -543,10 +558,13 @@ def handle_basic_commands(user_id, text):
 • לפי Task ID: "עדכן משימה #123 ל..."
 • אפשר גם להקליט: "עדכן משימה 2 ל..."
 
-⏰ **דחיית כל המשימות שעבר זמנן (בבת אחת):**
-מעביר את כל המשימות עם תאריך יעד שעבר (כולל מופעים של משימות חוזרות, לא את תבנית הסדרה) לשעה הבאה המלאה בישראל.
-• `דחה משימות שעברו` / `הזז משימות שעברו להיום`
-• `delay_all_expired_tasks_to_today` / `delay expired tasks` / `/delay_expired`
+⏰ **דחיית משימות שעברו:**
+• "דחה משימות שעברו" - דחיית כל המשימות שעבר זמנן לשעה הבאה המלאה בישראל (למשימות עם תאריך יעד בלבד)
+• "הזז משימות שעברו להיום" - אותה פעולה
+• "delay_all_expired_tasks_to_today" - באנגלית
+• "delay expired tasks" / "/delay_expired" - באנגלית
+
+במשימות חוזרות: מתעדכנים רק מופעים, לא תבנית הסדרה.
 
 📅 **תאריכי יעד:**
 תאריכים יחסיים:
@@ -584,7 +602,7 @@ def handle_basic_commands(user_id, text):
 • פירוט - משימות בנפרד (לתגובות 👍)
 • סטטיסטיקה - נתוני ביצועים
 • הושלמו - משימות שהושלמו
-• דחה משימות שעברו — דחיית כל המשימות שעבר זמנן (שעה הבאה בישראל; פירוט בסעיף ⏰ למעלה)
+• דחה משימות שעברו - דחיית כל מי שעבר זמן (רק עם תאריך יעד)
 
 💬 תומך בעברית, אנגלית ועוד"""
     
