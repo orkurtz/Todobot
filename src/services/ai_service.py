@@ -26,7 +26,7 @@ class AIService:
         # Configure Gemini
         genai.configure(api_key=self.api_key)
         # You've already correctly updated this to flash!
-        self.model = genai.GenerativeModel('gemini-3.1-flash-lite') 
+        self.model = genai.GenerativeModel('gemini-3.1-flash-lite-preview') 
         
         # Rate limiting and circuit breaker
         self.rate_limiter = APIRateLimiter(
