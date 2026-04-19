@@ -20,13 +20,22 @@ def _normalize_command_text(text):
     """
     Strip invisible bidi/zero-width chars and trailing punctuation so
     'עזרה', 'עזרה!', 'עזרה\u200f' etc. match the same as 'תפריט'.
+
+    Must not strip a lone '?' (list command) — rstrip('?.') would erase it entirely.
     """
     if not text or not isinstance(text, str):
         return ''
     s = unicodedata.normalize('NFC', text.strip())
     for ch in ('\u200f', '\u200e', '\ufeff', '\u202a', '\u202b', '\u202c', '\u202d'):
         s = s.replace(ch, '')
-    s = s.strip().rstrip('!.?…,:;').strip()
+    s = s.strip()
+    trimmed = s.rstrip('!.?…,:;').strip()
+    if trimmed:
+        s = trimmed
+    elif len(s) == 1:
+        pass  # keep e.g. "?" or "!"
+    else:
+        s = ''
     return s.lower()
 
 
@@ -559,10 +568,10 @@ def handle_basic_commands(user_id, text):
 • אפשר גם להקליט: "עדכן משימה 2 ל..."
 
 ⏰ **דחיית משימות שעברו:**
-• "דחה משימות שעברו" - דחיית כל המשימות שעבר זמנן לשעה הבאה המלאה בישראל (למשימות עם תאריך יעד בלבד)
-• "הזז משימות שעברו להיום" - אותה פעולה
+דחיית כל המשימות שעבר זמנן להיום (למשימות עם תאריך)
+• "דחה משימות שעברו" או "הזז משימות שעברו להיום" 
 • "delay_all_expired_tasks_to_today" - באנגלית
-• "delay expired tasks" / "/delay_expired" - באנגלית
+
 
 במשימות חוזרות: מתעדכנים רק מופעים, לא תבנית הסדרה.
 

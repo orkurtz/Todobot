@@ -279,6 +279,64 @@ class TaskService:
                 
                 return target_date.astimezone(pytz.UTC).replace(tzinfo=None)
         
+        # Explicit Hebrew: "יום ראשון הבא", "יום שני הבא ב11:30" (before loose substring matching)
+        hebrew_weekday_names = (
+            'ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'
+        )
+        name_to_pyweekday = {
+            'ראשון': 6, 'שני': 0, 'שלישי': 1, 'רביעי': 2,
+            'חמישי': 3, 'שישי': 4, 'שבת': 5,
+        }
+        ym = re.search(
+            r'(?:ל)?יום\s+(' + '|'.join(hebrew_weekday_names) + r')(?:\s+הבא)?',
+            text,
+        )
+        if ym:
+            wd = ym.group(1)
+            if wd in name_to_pyweekday:
+                target_wd = name_to_pyweekday[wd]
+                current_weekday = now.weekday()
+                days_ahead = (target_wd - current_weekday) % 7
+                if days_ahead == 0:
+                    days_ahead = 7
+                target_date = now + timedelta(days=days_ahead)
+                time_match = re.search(r'(?:ב\s*|ב-)?\s*(\d{1,2})\s*[:.]\s*(\d{2})', text)
+                if time_match:
+                    hour, minute = int(time_match.group(1)), int(time_match.group(2))
+                    target_date = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                else:
+                    time_match = re.search(r'(\d{1,2}):(\d{2})', text)
+                    if time_match:
+                        hour, minute = int(time_match.group(1)), int(time_match.group(2))
+                        target_date = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    else:
+                        target_date = target_date.replace(hour=9, minute=0, second=0, microsecond=0)
+                return target_date.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        # English: "next Sunday", "next sunday at 11:30"
+        en_wd = re.search(
+            r'next\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b',
+            text,
+        )
+        if en_wd:
+            en_map = {
+                'sunday': 6, 'monday': 0, 'tuesday': 1, 'wednesday': 2,
+                'thursday': 3, 'friday': 4, 'saturday': 5,
+            }
+            target_wd = en_map[en_wd.group(1).lower()]
+            current_weekday = now.weekday()
+            days_ahead = (target_wd - current_weekday) % 7
+            if days_ahead == 0:
+                days_ahead = 7
+            target_date = now + timedelta(days=days_ahead)
+            time_match = re.search(r'(\d{1,2}):(\d{2})', text)
+            if time_match:
+                hour, minute = int(time_match.group(1)), int(time_match.group(2))
+                target_date = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            else:
+                target_date = target_date.replace(hour=9, minute=0, second=0, microsecond=0)
+            return target_date.astimezone(pytz.UTC).replace(tzinfo=None)
+        
         # Handle Hebrew date expressions
         hebrew_mappings = {
             'היום': 0,
@@ -734,7 +792,7 @@ class TaskService:
                 
                 elif action == 'reschedule':
                     # Handle task reschedule
-                    success, message = self._handle_task_reschedule(user_id, task_data)
+                    success, message = self._handle_task_reschedule(user_id, task_data, original_message)
                     if success:
                         actions_performed['reschedule'].append(message)
                     else:
@@ -1218,7 +1276,7 @@ class TaskService:
             print(f"❌ Error handling task update: {e}")
             return False, "❌ שגיאה בעדכון המשימה. נסה שוב."
     
-    def _handle_task_reschedule(self, user_id: int, task_data: Dict) -> Tuple[bool, str]:
+    def _handle_task_reschedule(self, user_id: int, task_data: Dict, original_message: str = None) -> Tuple[bool, str]:
         """Handle task reschedule action (change only due date) with natural language"""
         try:
             print(f"🔥 DEBUG - _handle_task_reschedule called")
@@ -1291,6 +1349,11 @@ class TaskService:
             # Parse new due date - USE NATURAL LANGUAGE PARSER!
             new_due_date = self.parse_date_from_text(new_due_date_str)
             print(f"   Parsed due_date from '{new_due_date_str}' → {new_due_date}")
+            
+            # If AI returned a fragment, retry on full user message (e.g. "יום ראשון הבא" only in original)
+            if not new_due_date and original_message:
+                new_due_date = self.parse_date_from_text(original_message)
+                print(f"   Retry parse on original_message → {new_due_date}")
             
             # If natural language fails, try standard formats
             if not new_due_date:
