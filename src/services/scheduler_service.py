@@ -283,9 +283,9 @@ class SchedulerService:
         
         try:
             with app.app_context():
-                from ..models.database import Task, User, db
-                
-                # Get all users who have been active
+                from ..models.database import User
+                from ..services.daily_summary_service import DailySummaryService
+
                 active_users = User.query.filter(
                     User.last_active.isnot(None)
                 ).all()
@@ -295,107 +295,15 @@ class SchedulerService:
                     return
                 
                 print(f"Sending daily summary to {len(active_users)} users")
-                now = datetime.utcnow()
-                
+                daily_summary_service = DailySummaryService()
+
                 for user in active_users:
                     time.sleep(0.2)
                     try:
-                        # Get tasks due today
-                        now_israel = datetime.now(self.israel_tz)
-                        today_start_israel = now_israel.replace(hour=0, minute=0, second=0, microsecond=0)
-                        today_end_israel = today_start_israel + timedelta(days=1)
-                        
-                        today_start = today_start_israel.astimezone(pytz.UTC).replace(tzinfo=None)
-                        today_end = today_end_israel.astimezone(pytz.UTC).replace(tzinfo=None)
-                        
-                        tasks_due_today = Task.query.filter(
-                            Task.user_id == user.id,
-                            Task.status == 'pending',
-                            Task.is_recurring == False,  # Only show instances, not patterns
-                            Task.due_date >= today_start,
-                            Task.due_date < today_end
-                        ).order_by(Task.due_date.asc()).all()
-                        
-                        # Get overdue tasks
-                        overdue_tasks = Task.query.filter(
-                            Task.user_id == user.id,
-                            Task.status == 'pending',
-                            Task.is_recurring == False,  # Only show instances, not patterns
-                            Task.due_date < now,
-                            Task.due_date.isnot(None)
-                        ).order_by(Task.due_date.asc()).all()
-                        
-                        # Skip users with no tasks
-                        if len(tasks_due_today) == 0 and len(overdue_tasks) == 0:
+                        summary_text = daily_summary_service.build(user, source="cron")
+                        if summary_text is None:
                             continue
-                        
-                        # Build summary message
-                        summary_parts = ["📋 סיכום משימות יומי\n"]
-                        
-                        if overdue_tasks:
-                            summary_parts.append(f"⚠️ באיחור ({len(overdue_tasks)}):")
-                            for task in overdue_tasks[:5]:
-                                due_local = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
-                                summary_parts.append(f"  • {task.description[:50]} ({due_local.strftime('%d/%m %H:%M')})")
-                            if len(overdue_tasks) > 5:
-                                summary_parts.append(f"  ... ועוד {len(overdue_tasks) - 5}")
-                            summary_parts.append("")
-                        
-                        if tasks_due_today:
-                            summary_parts.append(f"📅 משימות להיום ({len(tasks_due_today)}):")
-                            for task in tasks_due_today[:5]:
-                                due_local = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
-                                summary_parts.append(f"  • {task.description[:50]} ({due_local.strftime('%H:%M')})")
-                            if len(tasks_due_today) > 5:
-                                summary_parts.append(f"  ... ועוד {len(tasks_due_today) - 5}")
-                            summary_parts.append("")
-                        
-                        # Phase 2: Add calendar events to daily summary
-                        if user.google_calendar_enabled and self.calendar_sync_service:
-                            try:
-                                from ..services.calendar_service import CalendarService
-                                calendar_service = CalendarService()
-                                
-                                # Fetch calendar events for today
-                                calendar_events = calendar_service.fetch_events(user, today_start, today_end, fetch_all=True)
-                                
-                                # Filter out events that are already tasks (deduplication)
-                                # Query ALL tasks with calendar_event_id (including completed, templates, etc.)
-                                all_user_tasks_with_cal_id = Task.query.filter(
-                                    Task.user_id == user.id,
-                                    Task.calendar_event_id.isnot(None)
-                                ).all()
-                                task_event_ids = {t.calendar_event_id for t in all_user_tasks_with_cal_id}
-                                
-                                # Filter out:
-                                # 1. Events that are already bot tasks (deduplication)
-                                # 2. Cancelled events (status == 'cancelled')
-                                # 3. Completed events (colorId == '8' or has ✅ in title)
-                                display_events = [
-                                    e for e in calendar_events 
-                                    if e['id'] not in task_event_ids
-                                    and e.get('status') != 'cancelled'
-                                    and e.get('colorId') != '8'  # Gray = completed
-                                    and not e.get('title', '').startswith('✅')  # Completed marker in title
-                                ]
-                                
-                                if display_events:
-                                    summary_parts.append(f"📆 אירועים ביומן ({len(display_events)}):")
-                                    for event in display_events[:5]:
-                                        start_local = event['start'].astimezone(self.israel_tz)
-                                        end_local = event['end'].astimezone(self.israel_tz)
-                                        summary_parts.append(f"  • {event['title'][:50]} ({start_local.strftime('%H:%M')}-{end_local.strftime('%H:%M')})")
-                                    if len(display_events) > 5:
-                                        summary_parts.append(f"  ... ועוד {len(display_events) - 5}")
-                                    summary_parts.append("")
-                            except Exception as calendar_error:
-                                print(f"⚠️ Failed to fetch calendar events for daily summary: {calendar_error}")
-                        
-                        summary_parts.append("💪 בהצלחה היום!")
-                        
-                        summary_text = "\n".join(summary_parts)
-                        
-                        # Send WhatsApp message
+
                         result = self.whatsapp_service.send_message(user.phone_number, summary_text)
                         
                         if result.get("success"):

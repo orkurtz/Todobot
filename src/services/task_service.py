@@ -663,7 +663,7 @@ class TaskService:
             
             formatted_tasks.append(task_text)
         
-        return "\n".join(formatted_tasks)
+        return "\n\n".join(formatted_tasks)
     
     def execute_parsed_tasks(self, user_id: int, parsed_tasks: List[Dict], original_message: str = None) -> str:
         """Execute parsed tasks from AI and return summary"""

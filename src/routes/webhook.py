@@ -620,6 +620,7 @@ def handle_basic_commands(user_id, text):
 🔧 **פקודות מהירות:**
 • עזרה - הצג עזרה זו
 • המשימות שלי / ? - רשימת משימות
+• סיכום יומי - סיכום משימות ואירועים להיום (כמו ב-9:00)
 • פירוט - משימות בנפרד (לתגובות 👍)
 • סטטיסטיקה - נתוני ביצועים
 • הושלמו - משימות שהושלמו
@@ -657,6 +658,9 @@ def handle_basic_commands(user_id, text):
         from ..app import task_service
         return task_service.delay_all_overdue_to_next_hour(user_id)
     
+    elif text_lower in ('סיכום יומי', 'סיכום משימות יומי', 'daily summary'):
+        return handle_daily_summary_command(user_id)
+    
     # Calendar integration commands
     elif any(cmd in text_lower for cmd in ['חבר יומן', 'חיבור יומן', 'connect calendar', 'link calendar']):
         return handle_calendar_connect_command(user_id)
@@ -684,6 +688,20 @@ def handle_basic_commands(user_id, text):
         return handle_toggle_hashtag_command(user_id, text_lower)
     
     return None
+
+def handle_daily_summary_command(user_id):
+    """On-demand daily summary (same builder as 9 AM push; always returns a message)."""
+    try:
+        from ..models.database import User
+        from ..services.daily_summary_service import DailySummaryService
+
+        user = User.query.get(user_id)
+        if not user:
+            return "❌ שגיאה: משתמש לא נמצא"
+        return DailySummaryService().build(user, source="on_demand")
+    except Exception as e:
+        print(f"❌ Error building daily summary: {e}")
+        return "❌ שגיאה ביצירת הסיכום היומי. נסה שוב."
 
 def handle_task_list_command(user_id):
     """Handle task list command"""
