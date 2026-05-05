@@ -1075,13 +1075,14 @@ To eliminate the 7-day expiry and allow any Google account to connect without ma
 | Scopes limited to minimum necessary | ✅ `calendar.events` + `calendar` only |
 | App description matching actual functionality | ✅ Reviewed |
 
-#### Privacy Policy
+#### Legal Documents
 
-A Privacy Policy is required for Google's OAuth verification and is hosted via **GitHub Pages**:
+Both documents are required for Google's OAuth verification and are hosted via **GitHub Pages**:
 
-> **[https://orkurtz.github.io/Todobot/PRIVACY](https://orkurtz.github.io/Todobot/PRIVACY)**
-
-The full policy is also available in this repository as [`PRIVACY.md`](PRIVACY.md).
+| Document | GitHub Pages URL | Repository File |
+|---|---|---|
+| **Privacy Policy** | [orkurtz.github.io/Todobot/PRIVACY](https://orkurtz.github.io/Todobot/PRIVACY) | [`PRIVACY.md`](PRIVACY.md) |
+| **Terms of Service** | [orkurtz.github.io/Todobot/TERMS](https://orkurtz.github.io/Todobot/TERMS) | [`TERMS.md`](TERMS.md) |
 
 **Summary of data practices:**
 - The bot's sole purpose is syncing WhatsApp tasks to the user's own Google Calendar.
