@@ -689,7 +689,7 @@ class CalendarService:
             db.session.commit()
             
             print(f"✅ Disconnected calendar for user {user_id}")
-            return True, "Calendar disconnected successfully"
+            return True, "היומן נותק בהצלחה! , בשביל לחבר את יומן גוגל שוב כתוב 'חבר יומן' "
             
         except Exception as e:
             print(f"❌ Failed to disconnect calendar: {e}")

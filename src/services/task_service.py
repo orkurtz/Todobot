@@ -566,7 +566,8 @@ class TaskService:
                     changes.append("תאריך יעד הוסר")
             
             print(f"✅ Updated task {task_id} for user {user_id}: {', '.join(changes)}")
-            return True, f"✅ משימה #{task_id} עודכנה:\n{chr(10).join('• ' + c for c in changes)}"
+            changes_text = "\n".join(f"• {c}" for c in changes) if changes else "אין שינויים"
+            return True, f"✏️ #{task_id}: \"{task.description[:50]}\"\n{changes_text}"
             
         except Exception as e:
             print(f"❌ Failed to update task: {e}")
@@ -852,12 +853,12 @@ class TaskService:
             for task in created_tasks:
                 if task.is_recurring:
                     pattern_text = self._format_recurrence_pattern(task)
-                    summary = f"✅ נוצרה: \"{task.description}\" 🔄\n   חוזר: {pattern_text}"
+                    summary = f"✅ נוצרה: \"{task.description}\" 🔄 [#{task.id}]\n   חוזר: {pattern_text}"
                     if task.due_date:
                         local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
                         summary += f"\n   מופע ראשון: {local_time.strftime('%d/%m %H:%M')}"
                 else:
-                    summary = f"✅ נוצרה: \"{task.description}\""
+                    summary = f"✅ נוצרה: \"{task.description}\" [#{task.id}]"
                     if task.due_date:
                         local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
                         reminder_time = task.due_date.replace(tzinfo=pytz.UTC) - timedelta(minutes=30)
@@ -865,7 +866,7 @@ class TaskService:
                         summary += f"\n📅 יעד: {local_time.strftime('%d/%m %H:%M')}"
                         summary += f"\n⏰ תזכורת: {reminder_local.strftime('%d/%m %H:%M')}"
                     else:
-                        summary += f"\n💡 אין תאריך יעד — לא תישלח תזכורת אוטומטית.\n   רוצה להוסיף? כתוב: \"דחה משימה X ל[תאריך]\""
+                        summary += f"\n💡 אין תאריך יעד — לא תישלח תזכורת אוטומטית.\n   רוצה להוסיף? כתוב: \"דחה משימה #{task.id} ל[תאריך]\""
                 task_summaries.append(summary)
             
             task_word = "משימה" if len(created_tasks) == 1 else "משימות"
@@ -940,7 +941,7 @@ class TaskService:
             
             success, message = self.complete_task(task.id, user_id)
             if success:
-                return True, f"#{task_id}: {task.description[:50]}..."
+                return True, f"#{task.id}: \"{task.description[:50]}\""
             else:
                 return False, message
         except Exception as e:
@@ -965,7 +966,7 @@ class TaskService:
             # Mark as completed
             success, message = self.complete_task(task_to_complete.id, user_id)
             if success:
-                return True, f"משימה {task_number}: {task_to_complete.description[:50]}..."
+                return True, f"#{task_to_complete.id}: \"{task_to_complete.description[:50]}\""
             else:
                 return False, message
                 
@@ -1006,18 +1007,12 @@ class TaskService:
                 if score >= 65:
                     success, message = self.complete_task(task.id, user_id)
                     if success:
-                        # Add confidence indicator for medium scores
-                        if score < 85:
-                            confidence_note = f" (התאמה: {int(score)}%)"
-                        else:
-                            confidence_note = ""
-                        return True, f"{task.description[:50]}...{confidence_note}"
+                        confidence_note = f" (התאמה: {int(score)}%)" if score < 85 else ""
+                        return True, f"#{task.id}: \"{task.description[:50]}\"{confidence_note}"
                     else:
                         return False, message
             
             # LAYER 2: Fallback to ILIKE substring matching
-            # Note: AI semantic matching was considered but deemed unnecessary
-            # Fuzzy matching already handles 95%+ of real-world cases (typos, partial matches)
             print(f"   ⚠️ Fuzzy match score too low, trying ILIKE fallback...")
             fallback_tasks = Task.query.filter(
                 Task.user_id == user_id,
@@ -1031,7 +1026,7 @@ class TaskService:
                 if best_task:
                     success, message = self.complete_task(best_task.id, user_id)
                     if success:
-                        return True, f"{best_task.description[:50]}..."
+                        return True, f"#{best_task.id}: \"{best_task.description[:50]}\""
                     return False, message
             
             return False, f"❌ לא נמצאה משימה פתוחה התואמת '{description}'"
@@ -1109,7 +1104,7 @@ class TaskService:
             
             success, message = self.delete_task(task.id, user_id)
             if success:
-                return True, f"#{task_id}: {task.description[:50]}..."
+                return True, f"#{task.id}: \"{task.description[:50]}\""
             else:
                 return False, message
         except Exception as e:
@@ -1134,7 +1129,7 @@ class TaskService:
             # Delete the task
             success, message = self.delete_task(task_to_delete.id, user_id)
             if success:
-                return True, f"משימה {task_number}: {task_to_delete.description[:50]}..."
+                return True, f"#{task_to_delete.id}: \"{task_to_delete.description[:50]}\""
             else:
                 return False, message
                 
@@ -1175,18 +1170,12 @@ class TaskService:
                 if score >= 65:
                     success, message = self.delete_task(task.id, user_id)
                     if success:
-                        # Add confidence indicator for medium scores
-                        if score < 85:
-                            confidence_note = f" (התאמה: {int(score)}%)"
-                        else:
-                            confidence_note = ""
-                        return True, f"{task.description[:50]}...{confidence_note}"
+                        confidence_note = f" (התאמה: {int(score)}%)" if score < 85 else ""
+                        return True, f"#{task.id}: \"{task.description[:50]}\"{confidence_note}"
                     else:
                         return False, message
             
             # LAYER 2: Fallback to ILIKE substring matching
-            # Note: AI semantic matching was considered but deemed unnecessary
-            # Fuzzy matching already handles 95%+ of real-world cases (typos, partial matches)
             print(f"   ⚠️ Fuzzy match score too low, trying ILIKE fallback...")
             fallback_tasks = Task.query.filter(
                 Task.user_id == user_id,
@@ -1200,7 +1189,7 @@ class TaskService:
                 if best_task:
                     success, message = self.delete_task(best_task.id, user_id)
                     if success:
-                        return True, f"{best_task.description[:50]}..."
+                        return True, f"#{best_task.id}: \"{best_task.description[:50]}\""
                     return False, message
             
             return False, f"❌ לא נמצאה משימה פתוחה התואמת '{description}'"
