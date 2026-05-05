@@ -60,7 +60,7 @@ class DailySummaryService:
         if source == "cron" and not has_tasks:
             return None
 
-        summary_parts: List[str] = ["📋 סיכום משימות יומי\n"]
+        summary_parts: List[str] = [self._greeting(now_israel) + "\n"]
         has_body = False
 
         if overdue_tasks:
@@ -135,13 +135,53 @@ class DailySummaryService:
         summary_parts.append("💪 בהצלחה היום!")
         return "\n".join(summary_parts)
 
+    def _greeting(self, now_israel: datetime) -> str:
+        """Return a time-aware, day-aware greeting for the summary header."""
+        weekday = now_israel.weekday()  # 0=Monday … 6=Sunday
+        hour = now_israel.hour
+
+        # Friday — end-of-week flavour (weekday==4 is Friday in Israel)
+        if weekday == 4:
+            return "שישי טוב 🕯️ — הנה תזכורת לפני סיום השבוע:"
+        # Saturday
+        if weekday == 5:
+            return "שבת שלום ✨ — הנה מה שמחכה לך:"
+        # Sunday — start of Israeli work week
+        if weekday == 6:
+            return "שבוע טוב! 🚀 הנה המשימות לתחילת השבוע:"
+
+        # Weekday — vary by time of day
+        if hour < 12:
+            greetings = [
+                "בוקר טוב! ☀️ הנה מה שמחכה לך היום:",
+                "בוקר אנרגטי! 💪 הנה סיכום היום שלך:",
+                "יום פרודוקטיבי לפניך! הנה המשימות:",
+            ]
+        elif hour < 17:
+            greetings = [
+                "צהריים טובים! 🌤️ הנה עדכון אמצע היום:",
+                "היום מתקדם — הנה מה שנשאר:",
+                "הנה תזכורת לאמצע היום:",
+            ]
+        else:
+            greetings = [
+                "ערב טוב! 🌙 הנה סיכום לפני סיום היום:",
+                "לפני שמסיימים — הנה מה שנשאר:",
+                "הנה עדכון לשארית היום:",
+            ]
+
+        # Rotate by day-of-year so it changes daily without randomness
+        idx = now_israel.timetuple().tm_yday % len(greetings)
+        return greetings[idx]
+
     def _empty_on_demand_message(self, user: User) -> str:
+        now_israel = datetime.now(self.israel_tz)
         lines = [
-            "📋 סיכום משימות יומי",
+            self._greeting(now_israel),
             "",
             "אין כרגע משימות באיחור או עם יעד להיום.",
         ]
         if user.google_calendar_enabled:
-            lines.append("לא נמצאו אירועים ביומן להצגה להיום (למעט אירועים שכבר משויכים למשימות בבוט).")
-        lines.append("יום נעים!")
+            lines.append("גם ביומן לא נמצאו אירועים מיוחדים להיום.")
+        lines.append("\nיום נעים! 😊")
         return "\n".join(lines)

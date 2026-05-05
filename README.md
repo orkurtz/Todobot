@@ -13,7 +13,8 @@
     <a href="#-how-it-works"><strong>How It Works</strong></a> •
     <a href="#-quick-start"><strong>Quick Start</strong></a> •
     <a href="#-usage-examples"><strong>Examples</strong></a> •
-    <a href="#-deployment"><strong>Deploy</strong></a>
+    <a href="#-deployment"><strong>Deploy</strong></a> •
+    <a href="#-production--verification"><strong>Verification</strong></a>
   </p>
 
   <p>
@@ -41,6 +42,13 @@ This project was originally created by **[buzaglo idan](https://github.com/buzag
 This repository represents a **complete refactor and significant enhancement** of the original project. While maintaining the core vision, we've added extensive features and improvements:
 
 #### 🆕 Major New Features
+- **⚡ Asynchronous Webhook Processing (Python Threading)**: The webhook handler immediately returns `200 OK` to WhatsApp and offloads all AI processing to a background thread. This completely eliminates message duplication and timeout retries that occurred when AI response latency exceeded WhatsApp's acknowledgement window.
+- **📋 Daily Summary Service (Single Source of Truth)**: Extracted the 9 AM cron logic into a unified `DailySummaryService`. The same service now powers both the scheduled morning push *and* the on-demand `"סיכום יומי"` WhatsApp command, guaranteeing consistent output and eliminating duplicated logic. Features a smart empty-state UX — returning a friendly message instead of silence when there is nothing to report.
+- **🎨 UX & Conversation Design Overhaul**:
+  - Rewritten onboarding/welcome flow for immediate user activation — first-time users get an action-oriented prompt that shows the bot's value in seconds
+  - Scannable, categorized mini-menus for the `עזרה` / `help` command with grouped sections instead of a flat list
+  - Smart recovery loops for voice and text parsing failures — shows the raw transcript and actionable next steps rather than a dead-end error message
+  - Micro-confirmations added to task creation and recurring-task setup responses to close the feedback loop
 - **📅 Google Calendar Integration**: 
   - **Phase 1**: Full one-way sync from Bot to Google Calendar - tasks with due dates automatically create calendar events, updates sync in real-time, and completions mark events as done
   - **Phase 2 (NEW!)**: Two-way sync - calendar events auto-convert to tasks every 10 minutes
@@ -246,10 +254,11 @@ The bot checks in with you **3 times daily**:
 - **If no tasks**: "כול הכבוד! 🎉 אין לך משימות פתוחות כרגע. תיהנה מהיום! 😊"
 
 #### Daily Summary
-- **9:00 AM Daily**: Morning summary of your day
-- Shows overdue tasks first (⚠️)
-- Then shows tasks due today (📅)
-- Helps you prioritize your day
+- **9:00 AM Daily**: Automatic morning summary of your day (skipped silently when you have nothing pending — no noise)
+- **On-Demand**: Send `"סיכום יומי"` at any time to get the same summary instantly
+- Shows overdue tasks first (⚠️), then tasks due today (📅), then any linked Google Calendar events
+- Smart empty-state: returns a friendly message instead of silence when there is nothing to report
+- Both the scheduled push and the on-demand command share the same `DailySummaryService` — identical, consistent output
 
 ### 🎤 Voice Message Support
 
@@ -500,7 +509,16 @@ Bot: Toggles automatic detection of '#' in event titles
                      v
 ┌─────────────────────────────────────────────────────────┐
 │              Flask Application (Webhook)                 │
+│  • Receives POST from WhatsApp                          │
+│  • Immediately returns 200 OK  ◄─ no duplication!       │
+│  • Spawns background Thread for heavy processing        │
+└────────────────────┬──────────────────────────────────┘
+                     │  (background thread)
+                     v
+┌─────────────────────────────────────────────────────────┐
+│              Message Processor (Thread)                  │
 │  • Input validation & sanitization                      │
+│  • Idempotency check (skip duplicate message IDs)       │
 │  • User authentication/creation                         │
 │  • Rate limiting check                                  │
 └────────────────────┬──────────────────────────────────┘
@@ -714,7 +732,8 @@ To enable calendar integration:
 
 | Command | Hebrew | English | Description |
 |---------|--------|---------|-------------|
-| **Help** | `עזרה` | `help` | Show help menu |
+| **Help** | `עזרה` | `help` | Show categorized help menu |
+| **Daily Summary** | `סיכום יומי` | `daily summary` | On-demand summary of today's tasks & calendar |
 | **List Tasks** | `משימות` / `?` | `tasks` | View pending tasks |
 | **Separate Tasks** | `פירוט` | `tasks separate` | Get each task as separate message (for 👍 reactions) |
 | **Statistics** | `סטטיסטיקה` | `stats` | View productivity stats |
@@ -870,6 +889,8 @@ Todobot/
 │   │   ├── whatsapp_service.py     # WhatsApp API client
 │   │   ├── task_service.py         # Task CRUD + recurring logic
 │   │   ├── calendar_service.py     # Google Calendar integration (OAuth + sync)
+│   │   ├── calendar_sync_service.py# Two-way calendar background sync
+│   │   ├── daily_summary_service.py# Unified 9 AM + on-demand daily summary
 │   │   ├── encryption.py           # AES-256 encryption service
 │   │   ├── scheduler_service.py    # Background jobs (reminders, summaries)
 │   │   └── monitoring_service.py   # System health monitoring
@@ -1033,6 +1054,50 @@ Access at `/admin/dashboard`:
    - Check that calendar is connected: send `"סטטוס יומן"`
    - Verify worker process is running (handles background sync)
    - Check Railway logs for "📅 Starting calendar sync" messages every 10 minutes
+
+---
+
+## 🔏 Production & Verification
+
+### Google OAuth — Moving to "In Production"
+
+The Google Calendar integration currently runs in **Testing** mode on Google Cloud, which causes OAuth tokens to expire after **7 days** and requires users to re-authorize frequently.
+
+To eliminate the 7-day expiry and allow any Google account to connect without manual whitelisting, the app is being submitted for Google's **OAuth verification** process (required to move the app to Production status).
+
+#### What Google Verification Requires
+
+| Requirement | Status |
+|---|---|
+| Verified domain / authorized redirect URI | ✅ Configured on Railway |
+| OAuth consent screen fully filled out | ✅ Complete |
+| Privacy Policy URL (publicly accessible) | ✅ Hosted via GitHub Pages — see below |
+| Scopes limited to minimum necessary | ✅ `calendar.events` + `calendar` only |
+| App description matching actual functionality | ✅ Reviewed |
+
+#### Privacy Policy
+
+A Privacy Policy is required for Google's OAuth verification and is hosted via **GitHub Pages**:
+
+> **[https://orkurtz.github.io/Todobot/PRIVACY](https://orkurtz.github.io/Todobot/PRIVACY)**
+
+The full policy is also available in this repository as [`PRIVACY.md`](PRIVACY.md).
+
+**Summary of data practices:**
+- The bot's sole purpose is syncing WhatsApp tasks to the user's own Google Calendar.
+- We request only the `calendar.events` and `calendar` scopes — strictly to create, update, and read tasks managed by the bot.
+- We do **not** read or store unrelated calendar events.
+- We do **not** sell, share, or analyze user data.
+- All OAuth tokens are encrypted at rest using **AES-256**.
+
+#### Troubleshooting: Calendar Token Expiry (Testing Mode)
+
+If your Google Calendar disconnects after 7 days while the app is still in Testing mode:
+1. Send `"סטטוס יומן"` to check connection status.
+2. If disconnected, send `"חבר יומן"` to re-authorize.
+3. The bot automatically syncs all tasks created while you were offline (up to 7 days back).
+
+Once the app moves to Production, this manual re-authorization will no longer be needed.
 
 ---
 

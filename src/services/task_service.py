@@ -852,17 +852,28 @@ class TaskService:
             for task in created_tasks:
                 if task.is_recurring:
                     pattern_text = self._format_recurrence_pattern(task)
-                    summary = f"✅ {task.description} 🔄 ({pattern_text})"
+                    summary = f"✅ נוצרה: \"{task.description}\" 🔄\n   חוזר: {pattern_text}"
+                    if task.due_date:
+                        local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                        summary += f"\n   מופע ראשון: {local_time.strftime('%d/%m %H:%M')}"
                 else:
-                    summary = f"✅ {task.description}"
-                
-                if task.due_date:
-                    local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
-                    summary += f" (יעד: {local_time.strftime('%d/%m %H:%M')})"
+                    summary = f"✅ נוצרה: \"{task.description}\""
+                    if task.due_date:
+                        local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
+                        reminder_time = task.due_date.replace(tzinfo=pytz.UTC) - timedelta(minutes=30)
+                        reminder_local = reminder_time.astimezone(self.israel_tz)
+                        summary += f"\n📅 יעד: {local_time.strftime('%d/%m %H:%M')}"
+                        summary += f"\n⏰ תזכורת: {reminder_local.strftime('%d/%m %H:%M')}"
+                    else:
+                        summary += f"\n💡 אין תאריך יעד — לא תישלח תזכורת אוטומטית.\n   רוצה להוסיף? כתוב: \"דחה משימה X ל[תאריך]\""
                 task_summaries.append(summary)
             
             task_word = "משימה" if len(created_tasks) == 1 else "משימות"
-            response_parts.append(f"נוצרו {len(created_tasks)} {task_word}:\n" + "\n".join(task_summaries))
+            count_line = f"נוצר{'ה' if len(created_tasks) == 1 else 'ו'} {len(created_tasks)} {task_word}:" if len(created_tasks) > 1 else ""
+            if count_line:
+                response_parts.append(count_line + "\n" + "\n\n".join(task_summaries))
+            else:
+                response_parts.append("\n\n".join(task_summaries))
         
         if actions_performed['complete']:
             task_word = "משימה" if len(actions_performed['complete']) == 1 else "משימות"

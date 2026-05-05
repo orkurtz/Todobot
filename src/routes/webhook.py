@@ -160,6 +160,40 @@ def webhook():
         print(f"❌ Webhook error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+def _build_overdue_nudge(user_id: int, last_active) -> str:
+    """
+    Returns a 1-line overdue nudge if the user has overdue tasks AND has been
+    away for more than 24 hours. Returns empty string otherwise.
+    """
+    try:
+        from ..models.database import Task
+        from datetime import timedelta as _td
+
+        now = datetime.utcnow()
+        # Only nudge when returning after a gap (> 24 hours away)
+        if last_active and (now - last_active) < _td(hours=24):
+            return ""
+
+        overdue_count = Task.query.filter(
+            Task.user_id == user_id,
+            Task.status == 'pending',
+            Task.is_recurring == False,
+            Task.due_date < now,
+            Task.due_date.isnot(None),
+        ).count()
+
+        if overdue_count == 0:
+            return ""
+
+        task_word = "משימה שעבר זמנה" if overdue_count == 1 else f"משימות שעבר זמנן"
+        return (
+            f"⚠️ יש לך {overdue_count} {task_word}.\n"
+            "כתוב \"דחה משימות שעברו\" להעברה מהירה לשעה הקרובה."
+        )
+    except Exception:
+        return ""
+
+
 def process_incoming_message(message, value):
     """Process a single incoming message"""
     try:
@@ -195,19 +229,16 @@ def process_incoming_message(message, value):
         
         if is_new_user:
             # Send welcome message to new user
-            welcome_msg = """👋 שלום! אני הבוט שלך לניהול משימות
+            welcome_msg = """👋 היי! אני הבוט שלך לרשימת המטלות — ישירות בוואטסאפ.
 
-✨ מה אני יכול לעשות:
-• ליצור משימות מההודעות שלך
-• להגדיר תאריכי יעד ותזכורות
-• לעקוב אחר ההתקדמות שלך
+פשוט כתוב לי מה אתה צריך לעשות:
+📌 "לקנות חלב מחר ב-17:00"
+📌 "להתקשר למוטי ביום שלישי"
+📌 "להגיש דוח עד יום שישי ב-12:00"
 
-🎯 בואו נתחיל! שלח לי משהו שאתה צריך לעשות, למשל:
-"להתקשר לאמא מחר ב-15:00"
+אני אדאג לתזכורות, ואפשר להשלים משימה בלחיצת 👍.
 
-⏰ הרבה משימות שעבר זמן? שלח: דחה משימות שעברו (מעביר הכול לשעה הבאה)
-
-💡 כתוב 'עזרה' לכל הפקודות והדוגמאות"""
+כדי לראות את כל מה שאפשר לעשות → כתוב *עזרה*"""
             
             whatsapp_service.send_message(from_number, welcome_msg)
         
@@ -218,7 +249,13 @@ def process_incoming_message(message, value):
                 "⚠️ אתה שולח הודעות מהר מדי. חכה רגע לפני שליחת הודעה נוספת."
             )
             return
-        
+
+        # Proactive overdue nudge — shown once per session (user away > 6 hours), skip for new users
+        if not is_new_user and message_type in ('text', 'audio', 'voice'):
+            _nudge = _build_overdue_nudge(user.id, user.last_active)
+            if _nudge:
+                whatsapp_service.send_message(from_number, _nudge)
+
         # Process different message types
         if message_type == 'text':
             process_text_message(message, user, whatsapp_service, ai_service)
@@ -324,7 +361,14 @@ def process_text_message(message, user, whatsapp_service, ai_service):
             print(f"🔥 DEBUG - Sending AI response + task summary")
         else:
             # No task operations - just AI response (pure conversation)
-            full_response = ai_response if ai_response else "מצטער, אני מתקשה לעבד את הבקשה שלך כרגע. אנא נסה שוב בעוד רגע."
+            if ai_response:
+                full_response = ai_response
+            else:
+                full_response = (
+                    f"לא הצלחתי להבין בדיוק מה לעשות עם:\n\"{sanitized_text}\"\n\n"
+                    "💡 נסה לנסח כך: \"להתקשר לדוד מחר ב-10\"\n"
+                    "או כתוב *עזרה* לדוגמאות נוספות."
+                )
             print(f"🔥 DEBUG - ⚠️ Sending AI response only (no execution)!")
         
         # Add help text footer for responses that are not commands or actions
@@ -350,7 +394,7 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         print(f"❌ Error processing text message: {e}")
         whatsapp_service.send_message(
             user.phone_number,
-            "🤖 מצטער, אני מתקשה לעבד את ההודעה שלך כרגע. אנא נסה שוב בעוד רגע."
+            "משהו השתבש בעיבוד ההודעה שלך. אנא נסה שוב, ואם הבעיה חוזרת — כתוב *עזרה* לרשימת הפקודות."
         )
 
 def process_voice_message(message, user, whatsapp_service, ai_service):
@@ -399,9 +443,20 @@ def process_voice_message(message, user, whatsapp_service, ai_service):
         parsed_tasks = ai_service.parse_tasks_from_audio(audio_data, mime_type)
         
         if not parsed_tasks:
+            transcription_hint = ""
+            if parsed_tasks is not None:
+                # We got a response but no tasks — show what was heard
+                first_task = (parsed_tasks or [{}])
+                heard_text = first_task[0].get('transcription', '') if first_task else ''
+                if heard_text:
+                    transcription_hint = f"🎤 שמעתי: \"{heard_text}\"\n\n"
             whatsapp_service.send_message(
                 user.phone_number,
-                "🎤 קיבלתי את ההודעה הקולית, אבל לא זיהיתי משימות. אם רצית ליצור משימה, נסה שוב או כתוב הודעת טקסט."
+                f"{transcription_hint}לא זיהיתי משימה בהודעה הקולית.\n\n"
+                "רוצה ליצור משימה? אפשר לנסח כך:\n"
+                "👉 \"להתקשר לדוד מחר ב-10\"\n"
+                "👉 \"לקנות מצרכים היום\"\n\n"
+                "או פשוט כתוב לי בטקסט."
             )
             return
         
@@ -446,7 +501,7 @@ def process_voice_message(message, user, whatsapp_service, ai_service):
         traceback.print_exc()
         whatsapp_service.send_message(
             user.phone_number,
-            "❌ שגיאה בעיבוד ההודעה הקולית. אפשר לנסות שוב או לכתוב הודעה."
+            "לא הצלחתי לעבד את ההודעה הקולית הפעם.\nאפשר לנסות שוב, או לכתוב את המשימה בטקסט."
         )
 
 def process_button_message(message, user, whatsapp_service):
@@ -512,15 +567,22 @@ def process_reaction_message(message, user, whatsapp_service):
         
         if success:
             # Build response with recurring info
-            response_text = f"✅ השלמתי: {task.description if task else 'משימה'}"
+            response_text = f"✅ \"{task.description if task else 'משימה'}\" — בוצע!"
             
-            # NEW: Add recurring info if applicable
+            # Add recurring info if applicable
             if task and task.parent_recurring_id:
                 pattern = task.get_recurring_pattern()
                 if pattern:
                     pattern_desc = task_service._format_recurrence_pattern(pattern)
-                    response_text += f"\n🔄 משימה חוזרת ({pattern_desc})"
-                    response_text += "\n💡 המשימה הבאה תופיע בחצות"
+                    response_text += f"\n🔄 חוזר: {pattern_desc}"
+                    # Show next occurrence date if available
+                    if pattern.due_date:
+                        import pytz as _pytz
+                        _israel_tz = _pytz.timezone('Asia/Jerusalem')
+                        next_local = pattern.due_date.replace(tzinfo=_pytz.UTC).astimezone(_israel_tz)
+                        response_text += f"\n📅 המופע הבא: {next_local.strftime('%d/%m %H:%M')} (יופיע ברשימה אוטומטית)"
+                    else:
+                        response_text += "\n📅 המופע הבא יופיע ברשימה אוטומטית בחצות"
             
             whatsapp_service.send_message(user.phone_number, response_text)
         else:
@@ -552,81 +614,39 @@ def handle_basic_commands(user_id, text):
     
     # Help command
     if text_lower in ['help', '/help', 'תפריט', 'עזרה']:
-        return """🤖 עזרה - בוט המשימות שלך
+        return """🤖 *מה אתה רוצה לעשות?*
 
-📝 **יצירת משימות:**
-פשוט ספר לי מה אתה צריך לעשות ואני אצור משימות:
-• "להתקשר לאמא מחר ב-15:00"
-• "פגישה ביום ראשון ב-10:00"
-• "לקנות מצרכים היום"
-• אפשר גם להקליט הודעות קוליות
+📝 *משימות*
+• "לקנות חלב מחר ב-17:00" — יצירה
+• "סיימתי משימה 2" — השלמה
+• "מחק משימה 3" — מחיקה
+• "דחה משימה 1 למחר" — דחייה
+• "שנה משימה 2 להתקשר לרופא" — עריכה
+• 🎤 אפשר גם להקליט במקום לכתוב
 
-🎤 **הקלטה קולית:**
-אתה יכול להקליט כל פעולה - יצירה, עדכון, השלמה, מחיקה, שאילתות ועוד!
-פשוט הקלט מה שאתה רוצה לעשות, ואני אבצע את הפעולה.
+✅ *סימון השלמה מהיר (👍)*
+כתוב "פירוט" → קבל משימה בהודעה נפרדת → הגב 👍
 
-✅ **השלמת משימות:**
-אתה יכול להשלים משימות בכמה דרכים:
-• לפי מספר ברשימה: "סיימתי משימה 2"
-• לפי שם/תיאור: "סיימתי להתקשר לאמא"
-• לפי Task ID: "סיימתי משימה #123"
-• הגב עם 👍 על הודעת משימה (כתוב 'פירוט' כדי לראות משימות בנפרד)
-
-✏️ **עדכון ועריכה:**
-אתה יכול לעדכן משימות באותן דרכים:
-• לפי מספר: "עדכן משימה 2 ל..."
-• לפי שם: "עדכן 'להתקשר לאמא' ל..."
-• לפי Task ID: "עדכן משימה #123 ל..."
-• אפשר גם להקליט: "עדכן משימה 2 ל..."
-
-⏰ **דחיית משימות שעברו:**
-דחיית כל המשימות שעבר זמנן להיום (למשימות עם תאריך)
-• "דחה משימות שעברו" או "הזז משימות שעברו להיום" 
-• "delay_all_expired_tasks_to_today" - באנגלית
-
-
-במשימות חוזרות: מתעדכנים רק מופעים, לא תבנית הסדרה.
-
-📅 **תאריכי יעד:**
-תאריכים יחסיים:
-• "מחר ב-15:00"
-• "בעוד שעתיים"
-• "ביום ראשון ב-10:00"
-
-תאריכים מדויקים:
-• "31/10 בשעה 14:30"
-• "15/11/2024 ב-09:00"
-
-🔄 **משימות חוזרות:**
-דוגמאות:
+🔄 *משימות חוזרות*
 • "תזכיר לי כל יום ב-9 לקחת ויטמינים"
-• "כל יום שני ורביעי ב-10 להתקשר"
-• "כל שבוע פגישה עם המנהל"
-• "כל יומיים להשקות צמחים"
+• "כל שני ורביעי ב-10 פגישת צוות"
+• "כל ה-15 בחודש להעביר שכירות"
+ניהול: "משימות חוזרות" · "עצור סדרה [מספר]"
 
-ניהול:
-• "משימות חוזרות" - הצג סדרות פעילות
-• "עצור סדרה [מספר]" - עצור ומחק עתידיות
-• "השלם סדרה [מספר]" - סיים אבל שמור קיימות
+📅 *יומן Google*
+• "חבר יומן" — חיבור ל-Google Calendar
+• "הצג יומן" — מבט על היום (משימות + אירועים)
+• "הגדרות יומן" — אילו אירועים הופכים למשימות
+• "סטטוס יומן" — בדיקת חיבור
 
-📅 **יומן Google:**
-• כל משימה עם תאריך יעד מתווספת אוטומטית ליומן שלך
-• "חבר יומן" - התחבר ל-Google Calendar
-• "נתק יומן" - נתק את החיבור
-• "סטטוס יומן" - בדוק מצב חיבור
-• "הצג יומן" - הצג משימות ואירועים להיום
-• "הגדרות יומן" - הגדר צבעים וסנכרון אוטומטי
+📋 *רשימות ונתונים*
+• "משימות" — רשימה מלאה
+• "סיכום יומי" — סיכום המשימות להיום
+• "סטטיסטיקה" — נתוני ביצועים
+• "הושלמו" — היסטוריה
+• "דחה משימות שעברו" — העבר כולם לשעה הקרובה
 
-🔧 **פקודות מהירות:**
-• עזרה - הצג עזרה זו
-• המשימות שלי / ? - רשימת משימות
-• סיכום יומי - סיכום משימות ואירועים להיום (כמו ב-9:00)
-• פירוט - משימות בנפרד (לתגובות 👍)
-• סטטיסטיקה - נתוני ביצועים
-• הושלמו - משימות שהושלמו
-• דחה משימות שעברו - דחיית כל מי שעבר זמן (רק עם תאריך יעד)
-
-💬 תומך בעברית, אנגלית ועוד"""
+💬 תומך בעברית ואנגלית"""
     
     # Task list commands - Enhanced to catch natural language variations
     elif (text_lower in ['tasks', 'my tasks', 'list', '/tasks', 'המשימות שלי', 'רשימה','משימות','?'] or
@@ -710,7 +730,7 @@ def handle_task_list_command(user_id):
         tasks = task_service.get_user_tasks(user_id, status='pending', limit=20)
         
         if not tasks:
-            return "📋 אין לך משימות ממתינות! שלח לי הודעה על משהו שאתה צריך לעשות."
+            return "📋 רשימתך ריקה — כתוב לי מה אתה צריך לעשות ואני אוסיף מיד.\nלמשל: \"להתקשר לאמא מחר ב-15:00\""
         
         # UX IMPROVEMENT: Use separate messages for small lists (< 10 items)
         if len(tasks) <= 5:
@@ -736,7 +756,7 @@ def handle_task_list_separate(user_id):
         tasks = task_service.get_user_tasks(user_id, status='pending', limit=20)
         
         if not tasks:
-            return "📋 אין לך משימות ממתינות!"
+            return "📋 רשימתך ריקה — כתוב לי מה אתה צריך לעשות ואני אוסיף מיד."
         
         # Send header
         whatsapp_service.send_message(
@@ -815,7 +835,7 @@ def handle_completed_tasks_command(user_id):
         tasks = task_service.get_user_tasks(user_id, status='completed', limit=10, include_patterns_when_completed=True)
         
         if not tasks:
-            return "✅ עדיין לא השלמת משימות. המשך לעבוד על המשימות הממתינות!"
+            return "✅ עדיין לא השלמת משימות — כתוב \"משימות\" לרשימה הפתוחה."
         
         response = f"✅ **המשימות האחרונות שהושלמו ({len(tasks)}):**\n\n"
         response += task_service.format_task_list(tasks, show_due_date=False)
@@ -871,13 +891,15 @@ def handle_calendar_connect_command(user_id):
         
         connect_url = f"{base_url}/calendar/connect/{user_id}"
         
-        response = f"""📅 חיבור ליומן Google Calendar
+        response = f"""📅 *חיבור ל-Google Calendar*
 
-לחץ על הקישור הבא כדי לחבר את היומן שלך:
-{connect_url}
+לחץ על הקישור → אשר גישה ליומן → חזור לכאן ✅
 
-לאחר החיבור, כל משימה עם תאריך יעד תתווסף 
-אוטומטית ליומן שלך! ✨"""
+🔗 {connect_url}
+
+אחרי החיבור, כל משימה שיש לה תאריך יעד תופיע אוטומטית ביומן שלך — אין צורך לעשות כלום נוסף.
+
+🔒 הגישה מאובטחת — הבוט רואה רק אירועים שהוא יצר."""
         
         return response
         
@@ -912,18 +934,18 @@ def handle_calendar_status_command(user_id):
             return "❌ שגיאה: משתמש לא נמצא"
         
         if user.google_calendar_enabled:
-            calendar_info = user.google_calendar_id or 'primary'
-            return f"""✅ היומן שלך מחובר!
+            return """✅ *היומן שלך מחובר ופעיל*
 
-📅 Calendar ID: {calendar_info}
+• משימות עם תאריך יעד → מופיעות ביומן אוטומטית
+• "הצג יומן" → מבט על היום (משימות + אירועים)
+• "הגדרות יומן" → הגדר אילו אירועים הופכים למשימות
 
-כל משימה עם תאריך יעד מתווספת אוטומטית ליומן.
-כדי לנתק, כתוב 'נתק יומן'."""
+לניתוק: כתוב "נתק יומן\""""
         else:
-            return """❌ היומן שלך לא מחובר.
+            return """❌ *היומן שלך לא מחובר*
 
-כתוב 'חבר יומן' כדי לחבר את Google Calendar שלך.
-לאחר החיבור, כל משימה עם תאריך יעד תתווסף אוטומטית ליומן! ✨"""
+כתוב "חבר יומן" כדי לחבר את Google Calendar שלך.
+אחרי החיבור, כל משימה עם תאריך יעד תתווסף ליומן אוטומטית."""
             
     except Exception as e:
         print(f"❌ Error handling calendar status: {e}")
@@ -940,9 +962,7 @@ def handle_show_calendar_command(user_id):
             return "❌ שגיאה: משתמש לא נמצא"
         
         if not user.google_calendar_enabled:
-            return """❌ היומן שלך לא מחובר.
-
-כתוב 'חבר יומן' כדי לחבר את Google Calendar שלך."""
+            return "❌ היומן לא מחובר. כתוב \"חבר יומן\" כדי להתחבר."
         
         # Get full schedule (tasks + events) for today
         if ai_service:
@@ -969,9 +989,7 @@ def handle_calendar_settings_command(user_id):
             return "❌ שגיאה: משתמש לא נמצא"
         
         if not user.google_calendar_enabled:
-            return """❌ היומן שלך לא מחובר.
-
-חבר את היומן קודם (כתוב 'חבר יומן')."""
+            return "❌ היומן לא מחובר. כתוב \"חבר יומן\" כדי להתחבר."
         
         # Show current settings
         color_names = {
