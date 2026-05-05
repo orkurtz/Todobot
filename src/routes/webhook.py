@@ -229,16 +229,7 @@ def process_incoming_message(message, value):
         
         if is_new_user:
             # Send welcome message to new user
-            welcome_msg = """👋 היי! אני הבוט שלך לרשימת המטלות — ישירות בוואטסאפ.
-
-פשוט כתוב לי מה אתה צריך לעשות:
-📌 "לקנות חלב מחר ב-17:00"
-📌 "להתקשר למוטי ביום שלישי"
-📌 "להגיש דוח עד יום שישי ב-12:00"
-
-אני אדאג לתזכורות, ואפשר להשלים משימה בלחיצת 👍.
-
-כדי לראות את כל מה שאפשר לעשות → כתוב *עזרה*"""
+            welcome_msg = "👋 היי! אני הבוט שלך לרשימת המטלות — ישירות בוואטסאפ.\n\nפשוט כתוב לי מה אתה צריך לעשות:\n\u200f📌 \"לקנות חלב מחר ב-17:00\"\n\u200f📌 \"להתקשר למוטי ביום שלישי\"\n\u200f📌 \"להגיש דוח עד יום שישי ב-12:00\"\n\nאני אדאג לתזכורות, ואפשר להשלים משימה בלחיצת 👍.\n\nכדי לראות את כל מה שאפשר לעשות — כתוב *עזרה*"
             
             whatsapp_service.send_message(from_number, welcome_msg)
         
@@ -375,7 +366,7 @@ def process_text_message(message, user, whatsapp_service, ai_service):
         # Add footer if: no parsed tasks (pure conversation) OR parsed tasks but no actions (queries only)
         if not parsed_tasks or (parsed_tasks and not has_action):
             # This is either a conversational response or a query (not an action), add help footer
-            full_response += "\n\nלתפריט ועזרה עם הבוט הגב 'עזרה' בצאט"
+            full_response += "\n\nלתפריט ועזרה — כתוב *עזרה*"
         
         # Send response
         whatsapp_service.send_message(from_number, full_response)
@@ -567,7 +558,7 @@ def process_reaction_message(message, user, whatsapp_service):
         
         if success:
             # Build response with recurring info
-            response_text = f"✅ #{task.id if task else '?'}: \"{task.description if task else 'משימה'}\" — בוצע!"
+            response_text = f"✅ \"{task.description if task else 'משימה'}\" — בוצע! \u200f(#{task.id if task else '?'})"
             
             # Add recurring info if applicable
             if task and task.parent_recurring_id:
@@ -669,7 +660,7 @@ def handle_basic_commands(user_id, text):
 • "סטטוס יומן" — בדיקת חיבור
 • "הצג יומן" — משימות + אירועים להיום
 • "הגדרות יומן" — הגדר צבע / # לסנכרון
-• "קבע צבע [1-11]" — איזה צבע יומן → משימה
+• "קבע צבע [1-11]" — צבע יומן שיהפוך למשימה
 • "הפעל #" / "כבה #" — זיהוי # בכותרת אירוע
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -698,7 +689,7 @@ def handle_basic_commands(user_id, text):
 • 🎤 אפשר גם להקליט במקום לכתוב
 
 ✅ *סימון השלמה מהיר (👍)*
-כתוב "פירוט" → קבל משימה בהודעה נפרדת → הגב 👍
+כתוב "פירוט", קבל משימה בהודעה נפרדת, הגב 👍
 
 🔄 *משימות חוזרות*
 • "תזכיר לי כל יום ב-9 לקחת ויטמינים"
@@ -718,7 +709,7 @@ def handle_basic_commands(user_id, text):
 • "הושלמו" — היסטוריה
 • "דחה משימות שעברו" — העבר כולם לשעה הקרובה
 
-📖 לרשימת *כל* הפקודות עם דוגמאות → כתוב *עזרה מלאה*"""
+📖 לרשימת *כל* הפקודות עם דוגמאות — כתוב *עזרה מלאה*"""
     
     # Task list commands - Enhanced to catch natural language variations
     elif (text_lower in ['tasks', 'my tasks', 'list', '/tasks', 'המשימות שלי', 'רשימה','משימות','?'] or
@@ -844,7 +835,7 @@ def handle_task_list_separate(user_id):
                 import pytz
                 israel_tz = pytz.timezone('Asia/Jerusalem')
                 local_time = task.due_date.replace(tzinfo=pytz.UTC).astimezone(israel_tz)
-                msg += f"\n📅 {local_time.strftime('%d/%m %H:%M')}"
+                msg += f"\n\u200f📅 {local_time.strftime('%d/%m %H:%M')}"
             
             result = whatsapp_service.send_message(user.phone_number, msg)
             
@@ -1008,9 +999,9 @@ def handle_calendar_status_command(user_id):
         if user.google_calendar_enabled:
             return """✅ *היומן שלך מחובר ופעיל*
 
-• משימות עם תאריך יעד → מופיעות ביומן אוטומטית
-• "הצג יומן" → מבט על היום (משימות + אירועים)
-• "הגדרות יומן" → הגדר אילו אירועים הופכים למשימות
+• משימות עם תאריך יעד — מופיעות ביומן אוטומטית
+• "הצג יומן" — מבט על היום (משימות + אירועים)
+• "הגדרות יומן" — הגדר אילו אירועים הופכים למשימות
 
 לניתוק: כתוב "נתק יומן\""""
         else:

@@ -69,7 +69,7 @@ class DailySummaryService:
             for task in overdue_tasks[:5]:
                 due_local = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
                 desc = (task.description or "")[:50]
-                summary_parts.append(f"  • {desc} ({due_local.strftime('%d/%m %H:%M')})")
+                summary_parts.append(f"  • {desc} \u200f({due_local.strftime('%d/%m %H:%M')})")
             if len(overdue_tasks) > 5:
                 summary_parts.append(f"  ... ועוד {len(overdue_tasks) - 5}")
             summary_parts.append("")
@@ -80,7 +80,7 @@ class DailySummaryService:
             for task in tasks_due_today[:5]:
                 due_local = task.due_date.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz)
                 desc = (task.description or "")[:50]
-                summary_parts.append(f"  • {desc} ({due_local.strftime('%H:%M')})")
+                summary_parts.append(f"  • {desc} \u200f({due_local.strftime('%H:%M')})")
             if len(tasks_due_today) > 5:
                 summary_parts.append(f"  ... ועוד {len(tasks_due_today) - 5}")
             summary_parts.append("")
@@ -121,7 +121,7 @@ class DailySummaryService:
                         end_local = event["end"].astimezone(self.israel_tz)
                         title = (event.get("title") or "")[:50]
                         summary_parts.append(
-                            f"  • {title} ({start_local.strftime('%H:%M')}-{end_local.strftime('%H:%M')})"
+                            f"  • {title} \u200f({start_local.strftime('%H:%M')}-{end_local.strftime('%H:%M')})"
                         )
                     if len(display_events) > 5:
                         summary_parts.append(f"  ... ועוד {len(display_events) - 5}")
