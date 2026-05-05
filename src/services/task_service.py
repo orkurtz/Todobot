@@ -609,17 +609,17 @@ class TaskService:
             '%d/%m/%Y בשעה %H:%M'
         )
         if failed and ok == 0:
-            detail = "\n".join(f"• #{tid}: {err}" for tid, err in failed[:5])
+            detail = "\n\n".join(f"• \u200f#{tid}: {err}" for tid, err in failed[:5])
             if len(failed) > 5:
                 detail += f"\n… ועוד {len(failed) - 5}"
-            return f"❌ לא עודכנה אף משימה.\n{detail}"
+            return f"❌ לא עודכנה אף משימה.\n\n{detail}"
         if failed:
-            detail = "\n".join(f"• #{tid}" for tid, _ in failed[:5])
+            detail = "\n\n".join(f"• \u200f#{tid}" for tid, _ in failed[:5])
             if len(failed) > 5:
                 detail += f"\n… ועוד {len(failed) - 5}"
             return (
-                f"✅ עודכנו {ok} משימות. תאריך יעד חדש: {local_line}\n"
-                f"⚠️ נכשלו {len(failed)}: \n{detail}"
+                f"✅ עודכנו {ok} משימות. תאריך יעד חדש: {local_line}\n\n"
+                f"⚠️ נכשלו {len(failed)}:\n\n{detail}"
             )
         return f"✅ עודכנו {ok} משימות שעבר זמנן. תאריך יעד חדש לכולן: {local_line}"
     
@@ -876,36 +876,47 @@ class TaskService:
             else:
                 response_parts.append("\n\n".join(task_summaries))
         
+        def _join_items(items: List[str]) -> str:
+            """Blank line between items so multi-task replies are readable in WhatsApp."""
+            return "\n\n".join(items)
+
         if actions_performed['complete']:
             task_word = "משימה" if len(actions_performed['complete']) == 1 else "משימות"
-            response_parts.append(f"✅ הושלמו {len(actions_performed['complete'])} {task_word}:\n" + "\n".join(actions_performed['complete']))
+            lines = _join_items(actions_performed['complete'])
+            response_parts.append(f"✅ הושלמו {len(actions_performed['complete'])} {task_word}:\n\n{lines}")
         
         if actions_performed['update']:
             task_word = "משימה" if len(actions_performed['update']) == 1 else "משימות"
-            response_parts.append(f"✏️ עודכנו {len(actions_performed['update'])} {task_word}:\n" + "\n".join(actions_performed['update']))
+            lines = _join_items(actions_performed['update'])
+            response_parts.append(f"✏️ עודכנו {len(actions_performed['update'])} {task_word}:\n\n{lines}")
         
         if actions_performed['reschedule']:
             task_word = "משימה" if len(actions_performed['reschedule']) == 1 else "משימות"
-            response_parts.append(f"📅 נדחו {len(actions_performed['reschedule'])} {task_word}:\n" + "\n".join(actions_performed['reschedule']))
+            lines = _join_items(actions_performed['reschedule'])
+            response_parts.append(f"📅 נדחו {len(actions_performed['reschedule'])} {task_word}:\n\n{lines}")
         
         if actions_performed['stop_series']:
             task_word = "סדרה" if len(actions_performed['stop_series']) == 1 else "סדרות"
-            response_parts.append(f"🛑 נעצרו {len(actions_performed['stop_series'])} {task_word}:\n" + "\n".join(actions_performed['stop_series']))
+            lines = _join_items(actions_performed['stop_series'])
+            response_parts.append(f"🛑 נעצרו {len(actions_performed['stop_series'])} {task_word}:\n\n{lines}")
         
         if actions_performed['complete_series']:
             task_word = "סדרה" if len(actions_performed['complete_series']) == 1 else "סדרות"
-            response_parts.append(f"✅ הושלמו {len(actions_performed['complete_series'])} {task_word}:\n" + "\n".join(actions_performed['complete_series']))
+            lines = _join_items(actions_performed['complete_series'])
+            response_parts.append(f"✅ הושלמו {len(actions_performed['complete_series'])} {task_word}:\n\n{lines}")
         
         if deleted_tasks:
             task_word = "משימה" if len(deleted_tasks) == 1 else "משימות"
-            response_parts.append(f"🗑️ נמחקו {len(deleted_tasks)} {task_word}:\n" + "\n".join(deleted_tasks))
+            lines = _join_items(deleted_tasks)
+            response_parts.append(f"🗑️ נמחקו {len(deleted_tasks)} {task_word}:\n\n{lines}")
         
         if query_results:
-            response_parts.append("\n".join(query_results))
+            response_parts.append(_join_items(query_results))
         
         if failed_tasks:
             task_word = "משימה" if len(failed_tasks) == 1 else "משימות"
-            response_parts.append(f"⚠️ נכשל בעיבוד {len(failed_tasks)} {task_word}:\n" + "\n".join(failed_tasks))
+            lines = _join_items(failed_tasks)
+            response_parts.append(f"⚠️ נכשל בעיבוד {len(failed_tasks)} {task_word}:\n\n{lines}")
         
         return "\n\n".join(response_parts) if response_parts else ""
     
