@@ -866,7 +866,7 @@ class TaskService:
                         summary += f"\n\u200f📅 יעד: {local_time.strftime('%d/%m %H:%M')}"
                         summary += f"\n\u200f⏰ תזכורת: {reminder_local.strftime('%d/%m %H:%M')}"
                     else:
-                        summary += f"\n💡 אין תאריך יעד — לא תישלח תזכורת אוטומטית.\n   רוצה להוסיף? כתוב: \"דחה משימה \u200f#{task.id} ל[תאריך]\""
+                        summary += f"\n💡 אין תאריך יעד \n    להוסיף? כתוב: \"דחה\עדכן משימה \u200f#{task.id} ל[תאריך]\""
                 task_summaries.append(summary)
             
             task_word = "משימה" if len(created_tasks) == 1 else "משימות"
