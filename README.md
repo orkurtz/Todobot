@@ -739,6 +739,7 @@ To enable calendar integration:
 | **Statistics** | `סטטיסטיקה` | `stats` | View productivity stats |
 | **Completed** | `הושלמו` | `completed` | View completed tasks |
 | **Delay overdue** | `דחה משימות שעברו` / `הזז משימות שעברו להיום` | `delay_all_expired_tasks_to_today` / `delay expired tasks` / `/delay_expired` | Move **all** overdue pending tasks (including recurring instances, not patterns) to the **next full hour** (Israel time). Only tasks with a due date are included |
+| **Assign date to dateless** | `הוסף תאריך למשימות` / `הוסף תאריך למשימות ללא תאריך` | `assign_date_to_dateless_tasks` / `add date to tasks` / `/add_date_to_tasks` | Assign the **next full hour** (Israel time) to **all** pending, non-recurring tasks that do not currently have a due date |
 | **Recurring** | `משימות חוזרות` | `recurring tasks` | View active recurring patterns |
 | **Connect Calendar** | `חבר יומן` | `connect calendar` | Connect Google Calendar |
 | **Disconnect Calendar** | `נתק יומן` | `disconnect calendar` | Disconnect calendar |

@@ -623,6 +623,52 @@ class TaskService:
             )
         return f"✅ עודכנו {ok} משימות שעבר זמנן. תאריך יעד חדש לכולן: {local_line}"
     
+    def assign_due_date_to_dateless_tasks(self, user_id: int) -> str:
+        """
+        Assign next full hour in Israel as due date for all pending tasks without a due date.
+        """
+        now_israel = datetime.now(self.israel_tz)
+        start_of_hour = now_israel.replace(minute=0, second=0, microsecond=0)
+        target_israel = start_of_hour + timedelta(hours=1)
+        new_due_utc = target_israel.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        dateless = Task.query.filter(
+            Task.user_id == user_id,
+            Task.status == 'pending',
+            Task.is_recurring == False,
+            Task.due_date.is_(None),
+        ).order_by(Task.created_at.asc()).all()
+        
+        if not dateless:
+            return "📋 אין משימות ללא תאריך יעד."
+        
+        ok = 0
+        failed: List[Tuple[int, str]] = []
+        for task in dateless:
+            success, msg = self.update_task(task.id, user_id, None, new_due_utc)
+            if success:
+                ok += 1
+            else:
+                failed.append((task.id, msg))
+        
+        local_line = new_due_utc.replace(tzinfo=pytz.UTC).astimezone(self.israel_tz).strftime(
+            '%d/%m/%Y בשעה %H:%M'
+        )
+        if failed and ok == 0:
+            detail = "\n\n".join(f"• \u200f#{tid}: {err}" for tid, err in failed[:5])
+            if len(failed) > 5:
+                detail += f"\n… ועוד {len(failed) - 5}"
+            return f"❌ לא עודכנה אף משימה.\n\n{detail}"
+        if failed:
+            detail = "\n\n".join(f"• \u200f#{tid}" for tid, _ in failed[:5])
+            if len(failed) > 5:
+                detail += f"\n… ועוד {len(failed) - 5}"
+            return (
+                f"✅ עודכנו {ok} משימות ללא תאריך. תאריך יעד חדש: {local_line}\n\n"
+                f"⚠️ נכשלו {len(failed)}:\n\n{detail}"
+            )
+        return f"✅ עודכנו {ok} משימות ללא תאריך. תאריך יעד חדש לכולן: {local_line}"
+    
     def format_task_list(self, tasks: List[Task], show_due_date: bool = True) -> str:
         """Format task list for display"""
         if not tasks:

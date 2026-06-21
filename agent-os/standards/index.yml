@@ -1,0 +1,34 @@
+# Agent OS Standards Index
+
+api:
+  ai-resilience:
+    description: Google Gemini API task parsing, rate-limiting, and circuit breaker patterns
+  multimodal-voice:
+    description: Transcribing and extracting tasks from audio in a single Gemini call
+  whatsapp:
+    description: Webhook lifecycle, background message processing, and Hebrew command sanitization
+
+backend:
+  background-jobs:
+    description: APScheduler configuration, thread constraints, context wrapping, and Redis locks
+  monitoring:
+    description: Centralized system health checks and direct WhatsApp admin alerting with cooldowns
+  summary-greetings:
+    description: Deterministic time-aware Hebrew greetings and noise-filtered calendar summaries
+  task-matching:
+    description: Hybrid task matching using RapidFuzz string comparison and date urgency tiebreaking
+
+database:
+  encryption:
+    description: Sensitive model field encryption/decryption properties with searchable SHA-256 hashes
+  task-recurrence:
+    description: Decoupled recurring templates and instances with strict mutation guards
+
+global:
+  minimalist-code:
+    description: Needs description - run /index-standards
+
+integration:
+  calendar-sync:
+    description: Bidirectional Google Calendar synchronization with conflict resolution
+

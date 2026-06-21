@@ -629,8 +629,9 @@ def handle_basic_commands(user_id, text):
 • "דחה משימה 1 למחר" / "העבר משימה 3 בעוד שעתיים"
 • "מחק משימה 3"
 
-*5 · דחיית כל המאוחרות*
+*5 · דחיית כל המאוחרות ועדכון תאריכים*
 • "דחה משימות שעברו" — כל מה שעבר זמן יעבור לשעה הקרובה
+• "הוסף תאריך למשימות" — כל משימה ללא תאריך תקבל את השעה הקרובה
 
 *6 · משימות חוזרות*
 • "תזכיר לי כל יום ב-9 לקחת ויטמינים"
@@ -681,7 +682,8 @@ def handle_basic_commands(user_id, text):
 • "סיכום יומי" — סיכום המשימות להיום
 • "סטטיסטיקה" — נתוני ביצועים
 • "הושלמו" — היסטוריה
-• "דחה משימות שעברו" — העבר כולם לשעה הקרובה
+• "דחה משימות שעברו" — העבר משימות שעבר זמנן לשעה הקרובה
+• "הוסף תאריך למשימות" — הוסף תאריך (השעה הקרובה) למשימות ללא תאריך
 
 📖 לרשימת *כל* הפקודות עם דוגמאות — כתוב *עזרה מלאה*"""
     
@@ -714,6 +716,16 @@ def handle_basic_commands(user_id, text):
     ):
         from ..app import task_service
         return task_service.delay_all_overdue_to_next_hour(user_id)
+    
+    elif text_lower in (
+        'assign_date_to_dateless_tasks',
+        '/add_date_to_tasks',
+        'add date to tasks',
+        'הוסף תאריך למשימות',
+        'הוסף תאריך למשימות ללא תאריך',
+    ):
+        from ..app import task_service
+        return task_service.assign_due_date_to_dateless_tasks(user_id)
     
     elif text_lower in ('סיכום יומי', 'סיכום משימות יומי', 'daily summary'):
         return handle_daily_summary_command(user_id)
